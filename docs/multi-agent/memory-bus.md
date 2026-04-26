@@ -20,13 +20,13 @@ from syrin.enums import MemoryType
 from datetime import datetime
 
 async def main():
-    bus = MemoryBus(allow_types=[MemoryType.SEMANTIC])
+    bus = MemoryBus(allow_types=[MemoryType.KNOWLEDGE])
 
     # Researcher agent publishes a finding
     entry = MemoryEntry(
         id="mem-001",
         content="AI safety research: 73% of models show alignment drift under distribution shift",
-        type=MemoryType.SEMANTIC,
+        type=MemoryType.KNOWLEDGE,
         importance=0.9,
         keywords=["safety", "alignment"],
         created_at=datetime.now(),
@@ -57,7 +57,7 @@ Each entry on the bus is a `MemoryEntry` with:
 
 - `id` — unique identifier for this memory
 - `content` — the text content of the memory
-- `type` — `MemoryType.CORE`, `EPISODIC`, `SEMANTIC`, or `PROCEDURAL`
+- `type` — `MemoryType.FACTS`, `EPISODIC`, `SEMANTIC`, or `PROCEDURAL`
 - `importance` — float from 0.0 to 1.0 (higher = more important)
 - `keywords` — list of strings for filtering and search
 - `created_at` — when this memory was created
@@ -72,10 +72,10 @@ Restrict which memory types are allowed:
 
 ```python
 # Only semantic memories (facts and knowledge) allowed
-bus = MemoryBus(allow_types=[MemoryType.SEMANTIC])
+bus = MemoryBus(allow_types=[MemoryType.KNOWLEDGE])
 
 # Multiple types
-bus = MemoryBus(allow_types=[MemoryType.SEMANTIC, MemoryType.PROCEDURAL])
+bus = MemoryBus(allow_types=[MemoryType.KNOWLEDGE, MemoryType.INSTRUCTIONS])
 
 # No restriction — all types accepted
 bus = MemoryBus()
@@ -115,7 +115,7 @@ from datetime import datetime, timedelta
 entry = MemoryEntry(
     id="breaking-news",
     content="System is under maintenance",
-    type=MemoryType.CORE,
+    type=MemoryType.FACTS,
     importance=1.0,
     keywords=["maintenance"],
     created_at=datetime.now(),
@@ -138,7 +138,7 @@ from syrin.memory.config import MemoryEntry
 from syrin.enums import MemoryType, SwarmTopology
 
 # 1. Create the shared bus
-bus = MemoryBus(allow_types=[MemoryType.SEMANTIC])
+bus = MemoryBus(allow_types=[MemoryType.KNOWLEDGE])
 
 
 class ResearchAgent(Agent):
@@ -156,7 +156,7 @@ class ResearchAgent(Agent):
             MemoryEntry(
                 id="finding-cot",
                 content=finding,
-                type=MemoryType.SEMANTIC,
+                type=MemoryType.KNOWLEDGE,
                 importance=0.9,
                 keywords=["prompting", "reasoning", "chain-of-thought"],
                 created_at=datetime.now(),
@@ -230,7 +230,7 @@ async def seed_bus(bus: MemoryBus) -> None:
     await bus.publish(MemoryEntry(
         id="domain-001",
         content="Compound X shows 80% bioavailability in phase-1 trials",
-        type=MemoryType.SEMANTIC,
+        type=MemoryType.KNOWLEDGE,
         importance=0.95,
         keywords=["compound-x", "bioavailability", "phase-1"],
         created_at=datetime.now(),
@@ -254,7 +254,7 @@ from syrin.enums import MemoryType, SwarmTopology
 
 # Shared bus — one instance, injected into every agent that needs it
 bus = MemoryBus(
-    allow_types=[MemoryType.SEMANTIC],
+    allow_types=[MemoryType.KNOWLEDGE],
     filter=lambda e: e.importance >= 0.7,  # only high-confidence findings
 )
 
@@ -283,7 +283,7 @@ class BiologyResearchAgent(Agent):
             MemoryEntry(
                 id="bio-001",
                 content=finding,
-                type=MemoryType.SEMANTIC,
+                type=MemoryType.KNOWLEDGE,
                 importance=0.92,
                 keywords=["biology", "ACE2", "mechanism", "compound-x"],
                 created_at=datetime.now(),
@@ -315,7 +315,7 @@ class ChemistryResearchAgent(Agent):
             MemoryEntry(
                 id="chem-001",
                 content=finding,
-                type=MemoryType.SEMANTIC,
+                type=MemoryType.KNOWLEDGE,
                 importance=0.88,
                 keywords=["chemistry", "ADMET", "pharmacokinetics", "compound-x"],
                 created_at=datetime.now(),

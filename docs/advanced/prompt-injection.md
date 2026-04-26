@@ -169,7 +169,7 @@ async def safe_remember(content: str, kind: MemoryType) -> None:
 
 # Use safe_remember instead of agent.memory.remember when the content
 # originates from user input or external tool results.
-await safe_remember("User prefers metric units.", memory_type=MemoryType.CORE)
+await safe_remember("User prefers metric units.", memory_type=MemoryType.FACTS)
 ```
 
 ### Memory Namespace Isolation

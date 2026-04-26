@@ -67,7 +67,7 @@ memory = Memory(
     backend=MemoryBackend.SQLITE,
     path="conversation.db",
     write_mode=WriteMode.SYNC,
-    restrict_to=[MemoryType.CORE, MemoryType.EPISODIC],
+    restrict_to=[MemoryType.FACTS, MemoryType.HISTORY],
 )
 
 agent = Agent(

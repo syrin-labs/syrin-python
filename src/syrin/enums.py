@@ -842,6 +842,25 @@ class ServeProtocol(StrEnum):
     STDIO = "stdio"
 
 
+class ServeAs(StrEnum):
+    """What interface to expose when serving an agent.
+
+    Use when calling ``agent.serve(serve_as=ServeAs.MCP)`` or via
+    ServeConfig.serve_as.
+
+    Attributes:
+        AGENT: Serve as a Syrin agent endpoint (HTTP REST, CLI REPL, or STDIO JSON).
+            Exposes /chat, /stream, /config, and optionally /playground. Default.
+        MCP: Serve as a Model Context Protocol server. The agent is exposed as an
+            MCP tool callable from Claude Code, Claude Desktop, Cursor, Dify, n8n,
+            and any other MCP-compatible host. Transport is controlled by
+            ServeConfig.protocol (STDIO for Claude Code, HTTP for web platforms).
+    """
+
+    AGENT = "agent"
+    MCP = "mcp"
+
+
 class WriteMode(StrEnum):
     """How remember/forget ops behave: SYNC blocks until complete; ASYNC fire-and-forget."""
 

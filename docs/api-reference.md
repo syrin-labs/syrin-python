@@ -144,7 +144,7 @@ Returned by every `run()` / `arun()` call.
 from syrin import Memory, MemoryType, Decay
 
 memory = Memory(
-    types=[MemoryType.CORE, MemoryType.EPISODIC],
+    types=[MemoryType.FACTS, MemoryType.HISTORY],
     backend=MemoryBackend.SQLITE,
     top_k=10,
     decay=Decay(strategy=DecayStrategy.EXPONENTIAL),

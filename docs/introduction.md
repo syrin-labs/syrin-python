@@ -109,10 +109,10 @@ class SupportAgent(Agent):
     model = Model.mock()
     system_prompt = "You are a technical support specialist."
     budget = Budget(max_cost=0.50, exceed_policy=ExceedPolicy.WARN)
-    memory = Memory(restrict_to=[MemoryType.CORE, MemoryType.EPISODIC])
+    memory = Memory(restrict_to=[MemoryType.FACTS, MemoryType.HISTORY])
 
 agent = SupportAgent()
-agent.remember("User prefers email notifications", memory_type=MemoryType.CORE)
+agent.remember("User prefers email notifications", memory_type=MemoryType.FACTS)
 response = agent.run("How do I reset my password?")
 print(response.content)
 print(f"Remaining budget: ${agent.budget_state.remaining:.4f}")

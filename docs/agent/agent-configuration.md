@@ -314,7 +314,7 @@ agent = Agent(
 # Store a memory manually
 agent.remember(
     "User prefers concise answers",
-    memory_type=MemoryType.CORE,
+    memory_type=MemoryType.FACTS,
     importance=0.9,
 )
 
@@ -322,7 +322,7 @@ agent.remember(
 response = agent.run("What are my preferences?")
 ```
 
-Four memory types are available: `MemoryType.CORE` for identity and permanent facts, `MemoryType.EPISODIC` for past events, `MemoryType.SEMANTIC` for learned knowledge, and `MemoryType.PROCEDURAL` for skills and processes.
+Four memory types are available: `MemoryType.FACTS` for identity and permanent facts, `MemoryType.HISTORY` for past events, `MemoryType.KNOWLEDGE` for learned knowledge, and `MemoryType.INSTRUCTIONS` for skills and processes.
 
 ## Checkpointing
 

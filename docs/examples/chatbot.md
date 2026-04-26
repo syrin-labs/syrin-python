@@ -40,7 +40,7 @@ memory = Memory(
     backend=MemoryBackend.SQLITE,
     path="chatbot_memory.db",
     write_mode=WriteMode.SYNC,
-    restrict_to=[MemoryType.CORE, MemoryType.EPISODIC, MemoryType.SEMANTIC, MemoryType.PROCEDURAL],
+    restrict_to=[MemoryType.FACTS, MemoryType.HISTORY, MemoryType.KNOWLEDGE, MemoryType.INSTRUCTIONS],
     top_k=10,
     auto_store=True,
     decay=Decay(
@@ -77,9 +77,9 @@ checkpoint = CheckpointConfig(
 )
 
 @tool
-def remember_fact(content: str, memory_type: str = "episodic") -> str:
+def remember_fact(content: str, memory_type: str = "history") -> str:
     """Store a fact for later recall."""
-    mt = MemoryType(memory_type.lower()) if memory_type else MemoryType.EPISODIC
+    mt = MemoryType(memory_type.lower()) if memory_type else MemoryType.HISTORY
     ok = memory.remember(content, memory_type=mt)
     return f"Stored: {content[:80]}..." if ok else "Failed to store"
 

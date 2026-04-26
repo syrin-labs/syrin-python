@@ -22,13 +22,13 @@ When cognitive scientists studied how human memory works, they found it is not a
 
 Syrin models these directly because they map cleanly onto the problems agents face:
 
-**Core** is who you are. Your name, your preferences, your important relationships. This information almost never changes. It should survive indefinitely.
+**Facts** is who you are. Your name, your preferences, your important relationships. This information almost never changes. It should survive indefinitely.
 
-**Episodic** is what happened. Specific events tied to a moment — "the user asked about pricing on Tuesday." These memories are inherently time-bound. A meeting from last month is less relevant than one from yesterday.
+**History** is what happened. Specific events tied to a moment — "the user asked about pricing on Tuesday." These memories are inherently time-bound. A meeting from last month is less relevant than one from yesterday.
 
-**Semantic** is what you know. Facts and beliefs that are independent of when they were acquired. "Python decorators wrap functions." The fact does not expire the way an episode does.
+**Knowledge** is what you know. Facts and beliefs that are independent of when they were acquired. "Python decorators wrap functions." The fact does not expire the way an episode does.
 
-**Procedural** is how you do things. Learned behaviors and instructions. "When the user asks for code, add type hints." These are stable skills — they should persist until explicitly updated.
+**Instructions** is how you do things. Learned behaviors and instructions. "When the user asks for code, add type hints." These are stable skills — they should persist until explicitly updated.
 
 When you use all four, you can build agents that behave very differently from a stateless LLM. They know their users. They learn. They adapt.
 
@@ -49,8 +49,8 @@ agent = Agent(
     memory=Memory(),
 )
 
-agent.remember("My name is Alice", memory_type=MemoryType.CORE)
-memories = agent.recall(memory_type=MemoryType.CORE)
+agent.remember("My name is Alice", memory_type=MemoryType.FACTS)
+memories = agent.recall(memory_type=MemoryType.FACTS)
 print(f"Stored memory id: {memories[0].content!r}")
 ```
 
@@ -62,7 +62,7 @@ Stored memory id: 'My name is Alice'
 
 ---
 
-## Core memory — the identity layer
+## Facts memory — the identity layer
 
 Core memory holds the facts about a user that should never decay. Think of it as the agent's permanent record of who this person is.
 
@@ -76,11 +76,11 @@ from syrin.enums import MemoryType
 agent = Agent(model=Model.OpenAI("gpt-4o-mini", api_key="your-api-key"), memory=Memory())
 # model = Model.mock()  # no API key needed for testing
 
-agent.remember("User's name is Alice", memory_type=MemoryType.CORE, importance=1.0)
-agent.remember("Alice uses a screen reader", memory_type=MemoryType.CORE, importance=1.0)
-agent.remember("Alice works at Acme Corp", memory_type=MemoryType.CORE, importance=0.9)
+agent.remember("User's name is Alice", memory_type=MemoryType.FACTS, importance=1.0)
+agent.remember("Alice uses a screen reader", memory_type=MemoryType.FACTS, importance=1.0)
+agent.remember("Alice works at Acme Corp", memory_type=MemoryType.FACTS, importance=0.9)
 
-mems = agent.recall(memory_type=MemoryType.CORE)
+mems = agent.recall(memory_type=MemoryType.FACTS)
 for m in mems:
     print(f"[{m.type}] importance={m.importance}  {m.content!r}")
 ```
@@ -88,16 +88,16 @@ for m in mems:
 Output:
 
 ```
-[core] importance=1.0  "User's name is Alice"
-[core] importance=1.0  'Alice uses a screen reader'
-[core] importance=0.9  'Alice works at Acme Corp'
+[facts] importance=1.0  "User's name is Alice"
+[facts] importance=1.0  'Alice uses a screen reader'
+[facts] importance=0.9  'Alice works at Acme Corp'
 ```
 
 Set `importance=1.0` for anything critical. That ensures decay curves leave it untouched.
 
 ---
 
-## Episodic memory — what happened
+## History memory — what happened
 
 Episodic memory captures specific events. It answers "what did we talk about?" not "what do I know in general?"
 
@@ -113,10 +113,10 @@ from syrin.enums import MemoryType
 agent = Agent(model=Model.OpenAI("gpt-4o-mini", api_key="your-api-key"), memory=Memory())
 # model = Model.mock()  # no API key needed for testing
 
-agent.remember("Alice asked about Python decorators on Tuesday", memory_type=MemoryType.EPISODIC, importance=0.7)
-agent.remember("Alice mentioned she is preparing for a code review", memory_type=MemoryType.EPISODIC, importance=0.6)
+agent.remember("Alice asked about Python decorators on Tuesday", memory_type=MemoryType.HISTORY, importance=0.7)
+agent.remember("Alice mentioned she is preparing for a code review", memory_type=MemoryType.HISTORY, importance=0.6)
 
-mems = agent.recall(memory_type=MemoryType.EPISODIC)
+mems = agent.recall(memory_type=MemoryType.HISTORY)
 for m in mems:
     print(f"[{m.type}] importance={m.importance}  {m.content!r}")
 ```
@@ -124,15 +124,15 @@ for m in mems:
 Output:
 
 ```
-[episodic] importance=0.7  'Alice asked about Python decorators on Tuesday'
-[episodic] importance=0.6  'Alice mentioned she is preparing for a code review'
+[history] importance=0.7  'Alice asked about Python decorators on Tuesday'
+[history] importance=0.6  'Alice mentioned she is preparing for a code review'
 ```
 
 Pair episodic memory with decay (covered below) so that stale episodes fade out instead of cluttering recalls forever.
 
 ---
 
-## Semantic memory — what the agent knows
+## Knowledge memory — what the agent knows
 
 Semantic memory holds facts. The difference from episodic: semantic knowledge does not care about when it was learned. "Python decorators are functions that wrap other functions" is true whether the agent learned it today or a year ago.
 
@@ -146,10 +146,10 @@ from syrin.enums import MemoryType
 agent = Agent(model=Model.OpenAI("gpt-4o-mini", api_key="your-api-key"), memory=Memory())
 # model = Model.mock()  # no API key needed for testing
 
-agent.remember("Python decorators are functions that wrap other functions", memory_type=MemoryType.SEMANTIC, importance=0.8)
-agent.remember("Alice prefers concise technical explanations over analogies", memory_type=MemoryType.SEMANTIC, importance=0.85)
+agent.remember("Python decorators are functions that wrap other functions", memory_type=MemoryType.KNOWLEDGE, importance=0.8)
+agent.remember("Alice prefers concise technical explanations over analogies", memory_type=MemoryType.KNOWLEDGE, importance=0.85)
 
-mems = agent.recall(memory_type=MemoryType.SEMANTIC)
+mems = agent.recall(memory_type=MemoryType.KNOWLEDGE)
 for m in mems:
     print(f"[{m.type}] importance={m.importance}  {m.content!r}")
 ```
@@ -157,13 +157,13 @@ for m in mems:
 Output:
 
 ```
-[semantic] importance=0.8  'Python decorators are functions that wrap other functions'
-[semantic] importance=0.85  'Alice prefers concise technical explanations over analogies'
+[knowledge] importance=0.8  'Python decorators are functions that wrap other functions'
+[knowledge] importance=0.85  'Alice prefers concise technical explanations over analogies'
 ```
 
 ---
 
-## Procedural memory — how the agent behaves
+## Instructions memory — how the agent behaves
 
 Procedural memory stores instructions. Not facts about the world, but facts about how this particular agent should operate with this particular user.
 
@@ -177,10 +177,10 @@ from syrin.enums import MemoryType
 agent = Agent(model=Model.OpenAI("gpt-4o-mini", api_key="your-api-key"), memory=Memory())
 # model = Model.mock()  # no API key needed for testing
 
-agent.remember("When Alice asks for code examples, always add type hints", memory_type=MemoryType.PROCEDURAL, importance=0.9)
-agent.remember("Alice likes responses to start with a one-sentence summary", memory_type=MemoryType.PROCEDURAL, importance=0.85)
+agent.remember("When Alice asks for code examples, always add type hints", memory_type=MemoryType.INSTRUCTIONS, importance=0.9)
+agent.remember("Alice likes responses to start with a one-sentence summary", memory_type=MemoryType.INSTRUCTIONS, importance=0.85)
 
-mems = agent.recall(memory_type=MemoryType.PROCEDURAL)
+mems = agent.recall(memory_type=MemoryType.INSTRUCTIONS)
 for m in mems:
     print(f"[{m.type}] importance={m.importance}  {m.content!r}")
 ```
@@ -188,8 +188,8 @@ for m in mems:
 Output:
 
 ```
-[procedural] importance=0.9  'When Alice asks for code examples, always add type hints'
-[procedural] importance=0.85  'Alice likes responses to start with a one-sentence summary'
+[instructions] importance=0.9  'When Alice asks for code examples, always add type hints'
+[instructions] importance=0.85  'Alice likes responses to start with a one-sentence summary'
 ```
 
 ---
@@ -214,7 +214,7 @@ agent.remember("Alice asked about pricing")
 # Explicit type and importance
 memory_id = agent.remember(
     "Alice's name is Alice",
-    memory_type=MemoryType.CORE,
+    memory_type=MemoryType.FACTS,
     importance=1.0,
 )
 print(f"Stored with id: {memory_id[:8]}...")
@@ -237,12 +237,12 @@ from syrin.enums import MemoryType
 
 agent = Agent(model=Model.OpenAI("gpt-4o-mini", api_key="your-api-key"), memory=Memory())
 # model = Model.mock()  # no API key needed for testing
-agent.remember("Alice works at Acme Corp", memory_type=MemoryType.CORE)
-agent.remember("Alice prefers dark mode", memory_type=MemoryType.SEMANTIC)
-agent.remember("The deadline is Friday", memory_type=MemoryType.EPISODIC)
+agent.remember("Alice works at Acme Corp", memory_type=MemoryType.FACTS)
+agent.remember("Alice prefers dark mode", memory_type=MemoryType.KNOWLEDGE)
+agent.remember("The deadline is Friday", memory_type=MemoryType.HISTORY)
 
 # Recall by type
-core_mems = agent.recall(memory_type=MemoryType.CORE)
+core_mems = agent.recall(memory_type=MemoryType.FACTS)
 print(f"Core memories: {len(core_mems)}")
 
 # Recall by keyword query (searches content)
@@ -261,8 +261,8 @@ Output:
 ```
 Core memories: 1
 Results for 'Alice': 2
-  [core] 'Alice works at Acme Corp'
-  [semantic] 'Alice prefers dark mode'
+  [facts] 'Alice works at Acme Corp'
+  [knowledge] 'Alice prefers dark mode'
 Total memories: 3
 ```
 
@@ -277,17 +277,17 @@ from syrin.enums import MemoryType
 
 agent = Agent(model=Model.OpenAI("gpt-4o-mini", api_key="your-api-key"), memory=Memory())
 # model = Model.mock()  # no API key needed for testing
-agent.remember("Meeting notes from Monday", memory_type=MemoryType.EPISODIC)
-agent.remember("Meeting notes from Tuesday", memory_type=MemoryType.EPISODIC)
-agent.remember("Alice's birthday is in June", memory_type=MemoryType.CORE)
+agent.remember("Meeting notes from Monday", memory_type=MemoryType.HISTORY)
+agent.remember("Meeting notes from Tuesday", memory_type=MemoryType.HISTORY)
+agent.remember("Alice's birthday is in June", memory_type=MemoryType.FACTS)
 
 print(f"Before: {len(agent.recall())} memories total")
 
 # Forget all episodic memories
-deleted = agent.forget(memory_type=MemoryType.EPISODIC)
+deleted = agent.forget(memory_type=MemoryType.HISTORY)
 print(f"Deleted: {deleted} episodic memories")
 print(f"After: {len(agent.recall())} memories total")
-print(f"Remaining core: {len(agent.recall(memory_type=MemoryType.CORE))}")
+print(f"Remaining core: {len(agent.recall(memory_type=MemoryType.FACTS))}")
 ```
 
 Output:
@@ -314,9 +314,9 @@ from syrin.enums import MemoryType
 
 agent = Agent(model=Model.OpenAI("gpt-4o-mini", api_key="your-api-key"), memory=Memory())
 # model = Model.mock()  # no API key needed for testing
-agent.remember("Alice prefers concise answers", memory_type=MemoryType.SEMANTIC, importance=0.85)
+agent.remember("Alice prefers concise answers", memory_type=MemoryType.KNOWLEDGE, importance=0.85)
 
-mems = agent.recall(memory_type=MemoryType.SEMANTIC)
+mems = agent.recall(memory_type=MemoryType.KNOWLEDGE)
 entry = mems[0]
 
 print(f"entry.content    = {entry.content!r}")
@@ -329,7 +329,7 @@ Output:
 
 ```
 entry.content    = 'Alice prefers concise answers'
-entry.type       = <MemoryType.SEMANTIC: 'semantic'>
+entry.type       = <MemoryType.KNOWLEDGE: 'semantic'>
 entry.importance = 0.85
 isinstance MemoryEntry: True
 ```
@@ -360,8 +360,8 @@ memory = Memory(
 agent = Agent(model=Model.OpenAI("gpt-4o-mini", api_key="your-api-key"), memory=memory)
 # model = Model.mock()  # no API key needed for testing
 
-agent.remember("This memory will decay over time", memory_type=MemoryType.EPISODIC)
-mems = agent.recall(memory_type=MemoryType.EPISODIC)
+agent.remember("This memory will decay over time", memory_type=MemoryType.HISTORY)
+mems = agent.recall(memory_type=MemoryType.HISTORY)
 print(f"Memory stored with decay configured: {len(mems)} memory")
 print(f"Strategy: {memory.decay.strategy}")
 print(f"Half-life: {memory.decay.half_life_hours} hours")
@@ -437,8 +437,8 @@ memory = Memory(backend=MemoryBackend.SQLITE, path="./memories.db")
 agent = Agent(model=Model.OpenAI("gpt-4o-mini", api_key="your-api-key"), memory=memory)
 # model = Model.mock()  # no API key needed for testing
 
-agent.remember("Persisted to disk", memory_type=MemoryType.CORE)
-mems = agent.recall(memory_type=MemoryType.CORE)
+agent.remember("Persisted to disk", memory_type=MemoryType.FACTS)
+mems = agent.recall(memory_type=MemoryType.FACTS)
 print(f"Backend: {memory.backend}")
 print(f"Content: {mems[0].content!r}")
 ```
