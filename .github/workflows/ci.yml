@@ -113,4 +113,5 @@ jobs:
           python -m pip install "pip-audit"
 
       - name: Run pip-audit
-        run: pip-audit --skip-editable --desc on
+        # CVE-2026-3219: pip ZIP/tar ambiguity — no fix released yet, ignored until patched
+        run: pip-audit --skip-editable --desc on --ignore-vuln CVE-2026-3219
