@@ -1,34 +1,26 @@
-# ResourcePool
-
-`ResourcePool` is the swarm-level counterpart to `BudgetPool`.  While
-`BudgetPool` governs cost, `ResourcePool` governs **requests per minute (RPM),
-tokens per minute (TPM), and concurrency** across all agents in a Swarm.
-
-## Why ResourcePool?
-
-When multiple agents run in a Swarm they share a single LLM provider account.
-Without coordination, agents can:
-
-- Saturate the provider's RPM or TPM ceiling and trigger 429 errors.
-- Overcommit concurrency and starve lower-priority agents.
-- Cause cascading failures when one noisy agent consumes all capacity.
-
-`ResourcePool` solves this with a single shared object that every agent acquires
-before calling the LLM and releases afterward.
-
+---
+title: "Resource Pool"
+description: Coordinate RPM, TPM, and concurrency across all agents in a Swarm so they share provider capacity without stepping on each other.
+weight: 156
 ---
 
-## Quick start
+## When Agents Share a Provider
+
+Your Swarm has ten agents all calling GPT-4o in parallel. Each one is well-behaved on its own, but together they saturate the provider's RPM ceiling and the 429s start. One noisy agent consumes all the tokens. Others starve. The whole thing grinds to a halt.
+
+`ResourcePool` fixes this with a single shared object that every agent acquires before calling the LLM and releases afterward. It enforces requests per minute, tokens per minute, and concurrency limits — and decides what to do when capacity is exhausted.
+
+## Basic Setup
 
 ```python
-from syrin import ResourcePool, Overflow
+from syrin import Overflow, ResourcePool
 from syrin.swarm import Swarm
 
 pool = ResourcePool(
     rpm=500,
     tpm=200_000,
     concurrency=10,
-    per_agent_rpm=50,
+    per_agent_rpm=50,          # no single agent can claim more than 50 RPM
     overflow=Overflow.BACKPRESSURE,
 )
 
@@ -39,40 +31,19 @@ swarm = Swarm(
 )
 ```
 
----
+Pass `pool=` to the Swarm and it wires up automatically. At least one of `rpm`, `tpm`, or `concurrency` must be set.
 
-## Constructor parameters
+## Overflow Strategies
 
-| Parameter | Type | Default | Description |
-|---|---|---|---|
-| `rpm` | `float \| None` | `None` | Pool-wide requests-per-minute ceiling.  `None` = unlimited. |
-| `tpm` | `float \| None` | `None` | Pool-wide tokens-per-minute ceiling.  `None` = unlimited. |
-| `concurrency` | `int \| None` | `None` | Max simultaneous active agents.  `None` = unlimited. |
-| `per_agent_rpm` | `float \| None` | `None` | Per-agent RPM cap within the pool. |
-| `per_agent_tpm` | `float \| None` | `None` | Per-agent TPM cap within the pool. |
-| `overflow` | `Overflow` | `Overflow.QUEUE` | Strategy when capacity is exhausted. |
-| `pool_id` | `str` | `"default"` | Identifier for diagnostic messages. |
+When agents request capacity the pool cannot immediately grant, `overflow` controls what happens.
 
-All numeric values must be > 0 when set.  `per_agent_rpm` must be ≤ `rpm`;
-`per_agent_tpm` must be ≤ `tpm`.
-
----
-
-## Overflow strategies
-
-### `Overflow.QUEUE` (default)
-
-Agents that cannot acquire a concurrency slot are queued and wait until a slot
-becomes available.  Guaranteed forward progress; latency increases under load.
+**`Overflow.QUEUE` (default)** — Agents wait until a slot opens. Guarantees forward progress at the cost of added latency under load. Good for batch workloads where throughput matters more than tail latency.
 
 ```python
 pool = ResourcePool(concurrency=3, overflow=Overflow.QUEUE)
 ```
 
-### `Overflow.REJECT`
-
-The pool raises `ResourcePoolFullError` immediately when capacity is exhausted.
-Use when you prefer fail-fast behaviour over waiting.
+**`Overflow.REJECT`** — Raises `ResourcePoolFullError` immediately when capacity is exhausted. Use when you prefer fail-fast behavior and handle retries in your own logic.
 
 ```python
 from syrin.exceptions import ResourcePoolFullError
@@ -84,63 +55,26 @@ except ResourcePoolFullError as e:
     print(e.dimension, e.requested, e.available)
 ```
 
-### `Overflow.BACKPRESSURE`
-
-Applies AIMD (Additive Increase / Multiplicative Decrease) congestion control.
-When utilization exceeds 85%, `acquire()` sleeps for up to 2 seconds before
-granting the slot, self-tuning the admission rate without dropping requests.
+**`Overflow.BACKPRESSURE`** — Applies AIMD (Additive Increase / Multiplicative Decrease) congestion control. When utilization exceeds 85%, `acquire()` sleeps for up to 2 seconds before granting the slot — self-tuning the admission rate without dropping requests. Good for real-time workloads where consistent throughput matters more than raw speed.
 
 ```python
 pool = ResourcePool(rpm=200, concurrency=8, overflow=Overflow.BACKPRESSURE)
 ```
 
----
+## Observing Utilization
 
-## Core methods
-
-### `acquire(agent_id) -> None`
-
-Reserve a concurrency slot.  Must be paired with `release()`.
+Check how much capacity is being consumed at any point:
 
 ```python
-await pool.acquire("agent-1")
-# ... run LLM call ...
-await pool.release("agent-1")
+util = pool.utilization
+# {"rpm": 0.72, "tpm": 0.38, "concurrency": 0.90}
+# Each value is 0.0–1.0. Uncapped dimensions return 0.0.
+
+if util["concurrency"] > 0.8:
+    alert_ops("swarm concurrency above 80%")
 ```
 
-### `release(agent_id) -> None`
-
-Free the concurrency slot.  Safe to call even if the agent never acquired.
-
-### `record_request(agent_id, tokens=0) -> None`
-
-Increment RPM and TPM counters.  Call once per LLM request.  Raises
-`ResourcePoolFullError` if per-agent or pool-level caps are hit.
-
-```python
-await pool.record_request("agent-1", tokens=1_500)
-```
-
-### `reallocate(agent_id, *, rpm=None, tpm=None) -> None`
-
-Adjust per-agent caps mid-run.
-
-```python
-await pool.reallocate("agent-1", rpm=100)
-```
-
-### `topup(*, rpm=0, tpm=0) -> None`
-
-Expand pool ceilings (e.g. after a provider burst unlock).
-
-```python
-await pool.topup(rpm=200, tpm=50_000)
-```
-
-### `snapshot() -> dict[str, AgentPoolEntry]`
-
-Point-in-time copy of all agent states.  Mutating the result does not affect
-pool state.
+For a point-in-time snapshot of per-agent state:
 
 ```python
 snap = await pool.snapshot()
@@ -148,73 +82,50 @@ for agent_id, entry in snap.items():
     print(agent_id, entry["rpm_used"], entry["concurrency_slots"])
 ```
 
-### `utilization` (property)
+Mutating the snapshot does not affect pool state.
 
-Returns `{"rpm": float, "tpm": float, "concurrency": float}` with each value
-in the 0.0–1.0 range.  Uncapped dimensions return 0.0.
+## Adjusting Capacity at Runtime
+
+Reallocate per-agent limits mid-run without stopping the pool:
 
 ```python
-util = pool.utilization
-if util["rpm"] > 0.8:
-    print("approaching RPM ceiling")
+await pool.reallocate("agent-1", rpm=100)   # give agent-1 more headroom
 ```
 
----
+Expand pool ceilings after a provider grants a burst allowance:
 
-## Window-based rate tracking
-
-RPM and TPM counters reset automatically every 60 seconds.  No background task
-is needed — the reset happens lazily at the start of `acquire()` and
-`record_request()`.  You can force a reset by advancing `pool._window_start`
-backward by 61 seconds in tests.
-
----
-
-## AIMD backpressure internals
-
-`BACKPRESSURE` mode tracks `_aimd_ceiling` (float):
-
-- **On success**: `_aimd_ceiling += 0.5` (additive increase, capped at max).
-- **On pressure** (utilization > 85%): `_aimd_ceiling = max(1.0, _aimd_ceiling × 0.5)`.
-
-The delay formula linearly interpolates from 0.0 s at 85% to 2.0 s at 100%:
-
+```python
+await pool.topup(rpm=200, tpm=50_000)
 ```
-delay = min(2.0, (utilization - 0.85) / 0.15 × 2.0)
-```
-
----
 
 ## Hooks
 
-Three hook values are emitted by ResourcePool-aware code:
-
-| Hook | When |
+| Hook | When it fires |
 |---|---|
 | `Hook.POOL_RATE_LOW` | Pool is above 85% utilization on any dimension. |
-| `Hook.POOL_REBALANCED` | Orchestrator reallocated capacity. |
-| `Hook.POOL_REJECTED` | Admission denied (`Overflow.REJECT` only). |
+| `Hook.POOL_REBALANCED` | Orchestrator reallocated capacity via `reallocate()`. |
+| `Hook.POOL_REJECTED` | Admission denied — only fires with `Overflow.REJECT`. |
 
----
+```python
+from syrin.enums import Hook
+
+pool_events = []
+agent.events.on(Hook.POOL_RATE_LOW, lambda ctx: pool_events.append(ctx))
+```
 
 ## Exceptions
 
-| Exception | Inherits | Raised when |
-|---|---|---|
-| `ResourcePoolError` | `SyrinError` | Base for all pool errors. |
-| `ResourcePoolFullError` | `ResourcePoolError` | Capacity exhausted + `REJECT`. |
-| `ResourceAllocationError` | `ResourcePoolError` | Agent not registered during `reallocate`. |
+`ResourcePoolFullError` is raised when capacity is exhausted and `overflow=Overflow.REJECT`. It carries `pool_id`, `dimension`, `requested`, and `available` for structured error handling.
 
-`ResourcePoolFullError` carries `pool_id`, `dimension`, `requested`, and
-`available` attributes for structured error handling.
+`ResourceAllocationError` is raised if `reallocate()` is called for an agent that has not yet acquired a slot.
 
----
+Both inherit from `ResourcePoolError` → `SyrinError`.
 
-## Complete example
+## Complete Example
 
 ```python
 import asyncio
-from syrin import ResourcePool, Overflow
+from syrin import Overflow, ResourcePool
 from syrin.exceptions import ResourcePoolFullError
 
 async def main() -> None:
@@ -230,15 +141,19 @@ async def main() -> None:
         await pool.acquire(agent_id)
         try:
             await pool.record_request(agent_id, tokens=500)
-            # ... do LLM work ...
+            # ... LLM call here ...
         finally:
             await pool.release(agent_id)
 
+    # Six agents compete for three concurrency slots — the rest queue
     await asyncio.gather(*[agent_task(f"worker-{i}") for i in range(6)])
-    print(pool.utilization)
+    print(pool.utilization)   # {"rpm": 0.6, "tpm": 0.06, "concurrency": 0.0}
 
 asyncio.run(main())
 ```
 
-See `examples/17_resource/resource_pool.py` for a runnable version covering
-all overflow modes.
+## See Also
+
+- [Resource Limits](/agent-kit/production/resource-limits) — Per-agent timeout, step caps, and tool caps
+- [Budget Delegation](/agent-kit/multi-agent/budget-delegation) — Share cost budgets across a Swarm
+- [Swarm](/agent-kit/multi-agent/swarm) — Multi-agent topologies and shared pool configuration
