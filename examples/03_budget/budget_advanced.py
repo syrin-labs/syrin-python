@@ -76,7 +76,7 @@ def example_cost_history(store: FileBudgetStore) -> None:
     print(f"  Agent   : {stats.agent_name}")
     print(f"  Runs    : {stats.run_count}")
     print(f"  Total   : ${stats.total_cost:.4f}")
-    print(f"  Average : ${stats.avg_cost:.4f}")
+    print(f"  Average : ${stats.mean:.4f}")
     print(f"  p50     : ${stats.p50_cost:.4f}  ← used by CostEstimator")
     print(f"  p95     : ${stats.p95_cost:.4f}  ← used by CostEstimator")
     print()
@@ -137,8 +137,11 @@ def example_custom_store() -> None:
                     run_count=0,
                     p50_cost=0.0,
                     p95_cost=0.0,
+                    p99_cost=0.0,
                     total_cost=0.0,
-                    avg_cost=0.0,
+                    mean=0.0,
+                    stddev=0.0,
+                    trend_weekly_pct=0.0,
                 )
             import statistics
 
@@ -146,13 +149,19 @@ def example_custom_store() -> None:
             n = len(sorted_costs)
             p50 = statistics.median(sorted_costs)
             p95 = sorted_costs[min(int(n * 0.95), n - 1)]
+            p99 = sorted_costs[min(int(n * 0.99), n - 1)]
+            mean = sum(sorted_costs) / n
+            stddev = statistics.pstdev(sorted_costs) if n >= 2 else 0.0
             return CostStats(
                 agent_name=agent_name,
                 run_count=n,
                 p50_cost=p50,
                 p95_cost=p95,
+                p99_cost=p99,
                 total_cost=sum(sorted_costs),
-                avg_cost=sum(sorted_costs) / n,
+                mean=mean,
+                stddev=stddev,
+                trend_weekly_pct=0.0,
             )
 
     # Verify it satisfies the protocol

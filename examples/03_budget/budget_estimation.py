@@ -157,7 +157,7 @@ async def example_preflight_validation() -> None:
     )
 
     try:
-        agent_tight.run("Research AI trends")
+        await agent_tight.arun("Research AI trends")
         print("  No error raised (budget was sufficient)")
     except Exception as exc:
         print(f"  {type(exc).__name__}: {exc}")
@@ -171,7 +171,7 @@ async def example_preflight_validation() -> None:
         )
     )
 
-    result = agent_generous.run("Research AI trends")
+    result = await agent_generous.arun("Research AI trends")
     print(f"  Generous budget: run succeeded, cost=${result.cost:.6f}")
 
 
@@ -201,7 +201,7 @@ async def example_estimation_hook() -> None:
         lambda ctx: estimation_events.append(dict(ctx)),
     )
 
-    agent.run("Summarise AI trends for Q1 2026")
+    await agent.arun("Summarise AI trends for Q1 2026")
 
     if estimation_events:
         evt = estimation_events[0]

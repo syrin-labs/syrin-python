@@ -18,8 +18,11 @@ import os
 import tempfile
 
 from syrin.enums import ApprovalState, HITLTimeout
-from syrin.hitl import HITLTimeoutError, SQLiteApprovalSession
+from syrin.hitl import ApprovalGate, HITLTimeoutError, SQLiteApprovalSession
 from syrin.hitl._session import ApprovalSessionProtocol
+from syrin.loop import HumanInTheLoop
+from syrin.types import TokenUsage
+from syrin.types._core import ToolCall
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Part 1: Direct SQLiteApprovalSession usage
@@ -133,11 +136,6 @@ async def demo_timeout_behaviors(db_path: str) -> None:
     print("\n=== Part 4: HITLTimeout behaviors ===")
 
     from unittest.mock import AsyncMock, MagicMock
-
-    from syrin.hitl import ApprovalGate
-    from syrin.loop import HumanInTheLoop
-    from syrin.types import TokenUsage
-    from syrin.types._core import ToolCall
 
     tc = ToolCall(id="tc-demo", name="risky_tool", arguments={"target": "prod"})
     final = MagicMock()

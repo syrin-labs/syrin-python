@@ -806,6 +806,11 @@ class Model:
         latency_max: float = 3.0,
         latency_seconds: float | None = None,
         supports_tools: bool = True,
+        strengths: list[TaskType] | None = None,
+        priority: int = 100,
+        profile_name: str | None = None,
+        input_media: set[Media] | None = None,
+        output_media: set[Media] | None = None,
     ) -> Model:
         """Create a mock model for testing — no API calls, no API key needed.
 
@@ -849,6 +854,11 @@ class Model:
             latency_max=latency_max,
             latency_seconds=latency_seconds,
             supports_tools=supports_tools,
+            strengths=strengths,
+            input_media=input_media,
+            output_media=output_media,
+            priority=priority,
+            profile_name=profile_name,
         )
 
     def __init__(

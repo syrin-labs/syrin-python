@@ -64,7 +64,7 @@ class GuardrailChain:
 
         instructions = []
         for g in self._guardrails:
-            if g.mode == GuardrailMode.SYSTEM_PROMPT:
+            if getattr(g, "mode", GuardrailMode.EVALUATE) == GuardrailMode.SYSTEM_PROMPT:
                 instr = g.system_prompt_instruction()
                 if instr and instr.strip():
                     instructions.append(instr)

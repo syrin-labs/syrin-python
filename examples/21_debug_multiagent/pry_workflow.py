@@ -90,7 +90,7 @@ async def example_basic_pry() -> None:
     pry.attach(agent)
 
     # The TUI is now active (if in a TTY). Run the agent:
-    result = agent.run("AI agent market trends 2026")
+    result = await agent.arun("AI agent market trends 2026")
     print(f"  Result: {result.content[:60]}")
 
     # Stop the Pry session
@@ -112,7 +112,7 @@ async def example_debugpoint() -> None:
     pry.attach(agent)
 
     # Run a step, then pause for inspection
-    result = agent.run("Analyse competitive AI landscape")
+    result = await agent.arun("Analyse competitive AI landscape")
     pry.debugpoint("after analysis run")  # blocks here in TUI; auto-resumes in CI
 
     print(f"  After debugpoint: {result.content[:60]}")

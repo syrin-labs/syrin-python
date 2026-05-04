@@ -103,7 +103,8 @@ def example_custom_loop_strategy() -> None:
         name = "my_custom"
 
         async def run(self, ctx: object, user_input: str) -> LoopResult:
-            from syrin.types import Message, MessageRole
+            from syrin.enums import MessageRole
+            from syrin.types import Message
 
             messages = [Message(role=MessageRole.USER, content=user_input)]
             response = await ctx.complete(messages)

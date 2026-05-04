@@ -168,25 +168,25 @@ async def example_a2a_timeline() -> None:
     router = A2ARouter(config=config)
 
     for agent_id in ["research-agent", "analyst-agent", "writer-agent"]:
-        router.register(agent_id)
+        router.register_agent(agent_id)
 
     # Simulate inter-agent messages
     await router.send(
         from_agent="research-agent",
         to_agent="analyst-agent",
-        content="Research complete — ready for analysis",
+        message="Research complete — ready for analysis",
         channel=A2AChannel.DIRECT,
     )
     await router.send(
         from_agent="analyst-agent",
         to_agent="writer-agent",
-        content="Analysis done — 3 insights ready",
+        message="Analysis done — 3 insights ready",
         channel=A2AChannel.DIRECT,
     )
     await router.send(
         from_agent="writer-agent",
         to_agent="research-agent",
-        content="Draft complete — requesting fact check",
+        message="Draft complete — requesting fact check",
         channel=A2AChannel.DIRECT,
     )
 
@@ -195,9 +195,8 @@ async def example_a2a_timeline() -> None:
     print(f"  A2A timeline ({len(audit)} messages):")
     for entry in audit:
         print(
-            f"  [{entry.message_id[:8]}...]  "
-            f"{entry.from_agent:<20} → {entry.to_agent:<20} "
-            f"{entry.content[:50]}"
+            f"  {entry.from_agent:<20} → {entry.to_agent:<20} "
+            f"[{entry.message_type}]  {entry.size_bytes}B"
         )
 
 
