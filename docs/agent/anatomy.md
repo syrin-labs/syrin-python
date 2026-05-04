@@ -123,7 +123,7 @@ agent = RememberingAgent()
 
 agent.remember(
     "User prefers dark mode",
-    memory_type=MemoryType.CORE,
+    memory_type=MemoryType.FACTS,
     importance=0.9,
 )
 
@@ -242,7 +242,7 @@ class FullFeaturedAgent(Agent):
 agent = FullFeaturedAgent()
 agent.events.on(Hook.AGENT_RUN_END, lambda ctx: print(f"Done! Cost: ${ctx.get('cost', 0):.4f}"))
 
-agent.remember("User prefers concise answers", memory_type=MemoryType.CORE)
+agent.remember("User prefers concise answers", memory_type=MemoryType.FACTS)
 response = agent.run("Research quantum computing")
 print(f"Content: {response.content[:100]}")
 print(f"Cost: ${response.cost:.6f}")

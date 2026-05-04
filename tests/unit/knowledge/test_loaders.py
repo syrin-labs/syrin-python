@@ -776,3 +776,26 @@ class TestKnowledgeNamespace:
         )
         assert isinstance(loader, GoogleDriveLoader)
         assert loader.folder == "https://drive.google.com/drive/folders/1ABC"
+
+    def test_google_drive_load_sync_does_not_raise_not_implemented(self) -> None:
+        """GoogleDriveLoader.load() must NOT raise NotImplementedError.
+
+        Before the fix, load() raised NotImplementedError("use aload()").
+        After the fix, load() is a sync wrapper that calls asyncio.run(aload()).
+        We mock aload() to avoid needing real credentials.
+        """
+        from unittest.mock import AsyncMock, patch
+
+        from syrin.knowledge.loaders import GoogleDriveLoader
+
+        loader = GoogleDriveLoader(
+            folder="https://drive.google.com/drive/folders/1ABC",
+            api_key="test-key",
+        )
+        fake_docs = [{"id": "1", "content": "hello"}]
+
+        with patch.object(loader, "aload", new_callable=AsyncMock, return_value=fake_docs):
+            # Must not raise NotImplementedError
+            result = loader.load()
+
+        assert result == fake_docs

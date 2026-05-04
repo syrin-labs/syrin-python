@@ -316,7 +316,12 @@ class FilesystemCheckpointBackend(CheckpointBackendProtocol):
                 state = CheckpointState.model_validate_json(file_path.read_text())
                 if state.agent_name == agent_name:
                     results.append(state.checkpoint_id)
-            except Exception:
+            except Exception as exc:
+                logger.warning(
+                    "syrin.checkpoint: skipping corrupt or unreadable checkpoint file %s: %s",
+                    file_path,
+                    exc,
+                )
                 continue
         return sorted(results)
 

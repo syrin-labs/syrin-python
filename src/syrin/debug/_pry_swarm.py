@@ -1,14 +1,4 @@
-"""SwarmPryTUI — multi-agent Pry debugger (stub, Phase 1 T16 / Phase 2+).
-
-The Swarm Pry TUI extends the existing single-agent Pry with four panels:
-
-- **Graph**: live workflow/swarm execution graph
-- **Agent**: selected agent state + HandoffContext
-- **Budget**: hierarchical budget tree
-- **A2A + Bus**: A2A message timeline and MemoryBus events
-
-Full implementation in Phase 1 T16 (workflow debugpoint) and Phase 2+.
-"""
+"""Multi-agent Pry debugger — interactive TUI for inspecting agent state during swarm runs."""
 
 from __future__ import annotations
 
@@ -60,8 +50,6 @@ class PrySession:
     Attributes:
         config: The :class:`PryConfig` for this session.
 
-    .. note::
-        Full implementation in Phase 1 T16 of v0.11.0.
     """
 
     def __init__(self, config: PryConfig) -> None:
@@ -78,7 +66,7 @@ class PrySession:
         Args:
             mode: How to resume.  Defaults to :attr:`~syrin.enums.PryResumeMode.STEP`.
         """
-        raise NotImplementedError("PrySession is implemented in Phase 1 T16 of v0.11.0.")
+        raise NotImplementedError("PrySession TUI is not available in this build.")
 
     def inspect(self) -> dict[str, object]:
         """Return a snapshot of the current agent state.
@@ -86,7 +74,7 @@ class PrySession:
         Returns:
             Dict with agent state, context, budget, and memory.
         """
-        raise NotImplementedError("PrySession is implemented in Phase 1 T16 of v0.11.0.")
+        raise NotImplementedError("PrySession TUI is not available in this build.")
 
     def export_state(self, path: str) -> None:
         """Export full debugger state to a JSON file.
@@ -94,7 +82,7 @@ class PrySession:
         Args:
             path: File path to write the JSON snapshot.
         """
-        raise NotImplementedError("PrySession is implemented in Phase 1 T16 of v0.11.0.")
+        raise NotImplementedError("PrySession TUI is not available in this build.")
 
 
 class SwarmPryTUI:

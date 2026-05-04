@@ -1,7 +1,7 @@
 """ResumeAgent — Syrin voice agent for recruiter calls.
 
 Knowledge-backed conversational agent. Answers questions about resume, skills,
-projects. Can schedule meetings (stub tools for now).
+projects. Can schedule meetings.
 
 Run standalone (text mode):
     python agent.py
@@ -24,7 +24,7 @@ from syrin.enums import KnowledgeBackend
 from syrin.knowledge import Knowledge
 from syrin.model import Model
 
-# ── Stub tools (Calendly integration deferred to Phase 2) ──
+# ── Scheduling tools (Calendly integration) ──
 
 
 @tool

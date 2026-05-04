@@ -137,12 +137,12 @@ agent = Agent(
 )
 
 # Store facts your agent should remember
-agent.remember("User's name is Alex", memory_type=MemoryType.CORE)
-agent.remember("Alex prefers bullet points", memory_type=MemoryType.CORE)
-agent.remember("Last session: we discussed machine learning", memory_type=MemoryType.EPISODIC)
+agent.remember("User's name is Alex", memory_type=MemoryType.FACTS)
+agent.remember("Alex prefers bullet points", memory_type=MemoryType.FACTS)
+agent.remember("Last session: we discussed machine learning", memory_type=MemoryType.HISTORY)
 
 # Recall relevant memories before a conversation
-memories = agent.recall("Alex", memory_type=MemoryType.CORE)
+memories = agent.recall("Alex", memory_type=MemoryType.FACTS)
 print(f"Recalled {len(memories)} memories about Alex:")
 for m in memories:
     print(f"  [{m.type}] {m.content}")
@@ -273,7 +273,7 @@ class ResearchAssistant(Agent):
 agent = ResearchAssistant()
 
 # Store context
-agent.remember("Focus on AI and machine learning topics", memory_type=MemoryType.CORE)
+agent.remember("Focus on AI and machine learning topics", memory_type=MemoryType.FACTS)
 
 # Subscribe to events
 agent.events.on(Hook.AGENT_RUN_START, lambda ctx: print(f"  [hook] Agent started"))

@@ -111,7 +111,7 @@ class TestMemoryWithEmbeddingConfig:
             ),
         )
         mem.remember("Custom embedding test", memory_type=MemoryType.FACTS)
-        results = mem.recall(query="Custom", count=5)
+        results = mem.recall(query="Custom", limit=5)
         assert len(results) >= 1
 
     def test_chroma_with_custom_embedding(self, temp_dir: str) -> None:
@@ -131,5 +131,5 @@ class TestMemoryWithEmbeddingConfig:
             ),
         )
         mem.remember("Chroma custom embedding", memory_type=MemoryType.HISTORY)
-        results = mem.recall(query="Chroma", count=5)
+        results = mem.recall(query="Chroma", limit=5)
         assert len(results) >= 1

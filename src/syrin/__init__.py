@@ -75,6 +75,12 @@ _MODULE_BY_NAME: dict[str, str] = {
     "Anthropic": "syrin.model",
     "ApprovalGate": "syrin.hitl",
     "ApprovalGateProtocol": "syrin.hitl",
+    "ApprovalSessionProtocol": "syrin.hitl",
+    "SQLiteApprovalSession": "syrin.hitl",
+    "HITLTimeoutError": "syrin.hitl",
+    "HITLSessionError": "syrin.hitl",
+    "HITLTimeout": "syrin.enums",
+    "ApprovalState": "syrin.enums",
     "AspectRatio": "syrin.generation",
     "AuditLog": "syrin.audit",
     "Budget": "syrin.budget",
@@ -173,7 +179,9 @@ _MODULE_BY_NAME: dict[str, str] = {
     "Response": "syrin.response",
     "RunContext": "syrin.run_context",
     "SemanticAttributes": "syrin.observability",
+    "ServeAs": "syrin.enums",
     "ServeConfig": "syrin.serve",
+    "ServeProtocol": "syrin.enums",
     "Session": "syrin.observability",
     "SingleShotLoop": "syrin.loop",
     "SlotConfig": "syrin.template",
@@ -260,6 +268,35 @@ _MODULE_BY_NAME: dict[str, str] = {
     "tool": "syrin.tool",
     "trace": "syrin.observability",
     "validated": "syrin.prompt",
+    # Resource limits
+    "Resource": "syrin.resource",
+    "ResourceState": "syrin.resource",
+    "ResourceThreshold": "syrin.resource",
+    "DegradePolicy": "syrin.resource",
+    "ResourceExceededError": "syrin.exceptions",
+    "ResourceTimeoutError": "syrin.exceptions",
+    "OnExceed": "syrin.enums",
+    "RestoreWhen": "syrin.enums",
+    "ResourceDimension": "syrin.enums",
+    "DegradeReason": "syrin.enums",
+    # ResourcePool
+    "ResourcePool": "syrin.resource",
+    "Overflow": "syrin.enums",
+    "ResourcePoolError": "syrin.exceptions",
+    "ResourcePoolFullError": "syrin.exceptions",
+    "ResourceAllocationError": "syrin.exceptions",
+    # Sandbox
+    "Sandbox": "syrin.sandbox",
+    "SandboxBackendType": "syrin.sandbox",
+    "SandboxExecResult": "syrin.sandbox",
+    "SandboxError": "syrin.sandbox",
+    "SandboxTimeoutError": "syrin.sandbox",
+    "SandboxMemoryError": "syrin.sandbox",
+    # RLMLoop
+    "RLMLoop": "syrin.rlm",
+    "BudgetSplit": "syrin.enums",
+    "RLMDepthError": "syrin.rlm",
+    "Spawn": "syrin.rlm",
 }
 
 
@@ -279,46 +316,7 @@ def _import_public(name: str) -> object:
     return value
 
 
-_REMOVED_IN_V0_11: dict[str, str] = {
-    "task": (
-        "'@task' was removed in v0.11.0. Define agent entry points as plain methods:\n"
-        "    class MyAgent(Agent):\n"
-        "        def research(self, topic: str) -> str:\n"
-        "            return self.run(f'Research: {topic}').content"
-    ),
-    "REACT": (
-        "'REACT' alias was removed in v0.11.0. Use 'ReactLoop' directly:\n"
-        "    from syrin import ReactLoop"
-    ),
-    "SINGLE_SHOT": (
-        "'SINGLE_SHOT' alias was removed in v0.11.0. Use 'SingleShotLoop' directly:\n"
-        "    from syrin import SingleShotLoop"
-    ),
-    "HITL": (
-        "'HITL' alias was removed in v0.11.0. Use 'HumanInTheLoop' directly:\n"
-        "    from syrin import HumanInTheLoop"
-    ),
-    "AgentConfig": (
-        "'AgentConfig' was removed. Pass its fields directly to Agent():\n"
-        "    Agent(context=..., rate_limit=..., checkpoint=..., tracer=...,\n"
-        "          event_bus=..., audit=..., dependencies=...,\n"
-        "          spotlight_tool_outputs=..., normalize_inputs=..., tool_error_mode=...)"
-    ),
-    "raise_on_exceeded": (
-        "'raise_on_exceeded' was removed. Use Budget(exceed_policy=ExceedPolicy.STOP) instead."
-    ),
-    "warn_on_exceeded": (
-        "'warn_on_exceeded' was removed. Use Budget(exceed_policy=ExceedPolicy.WARN) instead."
-    ),
-    "stop_on_exceeded": (
-        "'stop_on_exceeded' was removed. Use Budget(exceed_policy=ExceedPolicy.STOP) instead."
-    ),
-}
-
-
 def __getattr__(name: str) -> object:
-    if name in _REMOVED_IN_V0_11:
-        raise ImportError(_REMOVED_IN_V0_11[name])
     if name not in __all__:
         raise AttributeError(f"module {__name__} has no attribute {name!r}")
     return globals().get(name) or _import_public(name)

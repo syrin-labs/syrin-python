@@ -139,9 +139,10 @@ class OverridePayload(BaseModel):  # type: ignore[explicit-any]
     """List of overrides from backend, with monotonic version.
 
     Used by SSE, polling, and PATCH responses. version is used for ordering and since_version in polling.
+    extra="ignore" so that extra backend fields (e.g. ok) are silently discarded.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     agent_id: str = Field(..., min_length=1, description="Target agent identifier")
     version: int = Field(..., ge=0, description="Monotonic version number")
@@ -171,9 +172,10 @@ class SyncResponse(BaseModel):  # type: ignore[explicit-any]
 
     When ok is True, initial_overrides may contain overrides to apply immediately.
     When ok is False (e.g. backend down), agent continues with local config.
+    extra="ignore" so that extra backend fields (e.g. agentId, configDelta) are silently discarded.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     ok: bool = Field(..., description="True if registration succeeded")
     initial_overrides: list[ConfigOverride] | None = Field(

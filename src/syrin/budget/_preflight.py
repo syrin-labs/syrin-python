@@ -1,4 +1,4 @@
-"""Pre-flight budget error (v0.11.0+).
+"""Pre-flight budget validation error.
 
 Raised by the estimation API when EstimationPolicy.RAISE is set and the
 estimated p95 cost exceeds the configured budget.

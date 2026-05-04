@@ -145,11 +145,25 @@ class GlobalConfig:
         return getattr(self, key, default)
 
     def set(self, **kwargs: object) -> None:
-        """Set multiple public configuration values. Unknown keys are silently ignored."""
+        """Set multiple public configuration values.
+
+        Raises:
+            ConfigurationError: If any key is not a recognised configuration key.
+        """
+        from syrin.exceptions import ConfigurationError  # noqa: PLC0415
+
+        unknown = {k for k in kwargs if k not in self._PUBLIC_KEYS}
+        if unknown:
+            sorted_unknown = sorted(unknown)
+            sorted_valid = sorted(self._PUBLIC_KEYS)
+            raise ConfigurationError(
+                f"Unknown configuration key(s): {sorted_unknown}. Valid keys: {sorted_valid}.",
+                unknown_keys=unknown,
+                valid_keys=self._PUBLIC_KEYS,
+            )
         with self._lock:
             for key, value in kwargs.items():
-                if key in self._PUBLIC_KEYS:
-                    setattr(self, key, value)
+                setattr(self, key, value)
 
 
 _config = GlobalConfig()

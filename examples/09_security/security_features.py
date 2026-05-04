@@ -1,7 +1,7 @@
 """
 examples/09_security/security_features.py
 ==========================================
-Demonstrates Phase 7 security features:
+Demonstrates security features:
 
 - PIIGuardrail: scan/redact/reject/audit PII in text
 - ToolOutputValidator: detect injection patterns in tool output
@@ -183,7 +183,7 @@ def demo_sec_fixes() -> None:
 
 def main() -> None:
     """Run all security feature demos."""
-    print("syrin Phase 7 — Security Hardening Demo")
+    print("syrin — Security Hardening Demo")
     print("=" * 42)
 
     demo_pii_guardrail()

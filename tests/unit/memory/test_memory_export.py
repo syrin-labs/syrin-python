@@ -85,7 +85,7 @@ class TestMemoryImport:
         )
         count = mem2.import_from(snap)
         assert count >= 1
-        results = mem2.recall(query="Original", count=5)
+        results = mem2.recall(query="Original", limit=5)
         assert len(results) >= 1
 
     def test_import_append_mode(self, temp_db: str) -> None:
@@ -105,7 +105,7 @@ class TestMemoryImport:
         mem2.remember("B", memory_type=MemoryType.FACTS)
         count = mem2.import_from(snap)
         assert count >= 1
-        results = mem2.recall(count=10)
+        results = mem2.recall(limit=10)
         assert len(results) >= 2
 
 

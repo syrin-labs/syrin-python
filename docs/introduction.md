@@ -1,7 +1,17 @@
 ---
-title: Introduction
-description: Why Syrin exists, what problems it solves, and how it thinks about building AI agents
+title: Introduction — The AI Harness for Python Developers
+description: Why Syrin exists, what the AI Harness concept means, and how it gives developers control over LLMs in production.
 weight: 1
+---
+
+## What Is an AI Harness?
+
+A harness gives you control over something powerful. It does not limit what that force can do — it channels power precisely where you need it, safely and predictably, every time.
+
+LLMs are extraordinarily capable. They are also unpredictable, expensive, opaque, and stateless out of the box. A raw LLM call is a power source with no circuit breaker, no meter, and no safety rail.
+
+**Syrin is the harness.** It wraps any LLM — OpenAI, Anthropic, Google, Ollama, or your own — with everything a Python developer needs to build production AI systems: hard cost limits, persistent memory, isolated code execution, 72+ lifecycle hooks, multi-agent orchestration, and safety guardrails. All built in. All declarative. No bolt-on.
+
 ---
 
 ## The $47,000 Wake-Up Call
@@ -30,17 +40,17 @@ You picked a framework. You wired up your model. You hoped for the best.
 
 Production AI systems were being built on a foundation with no floors and no walls.
 
-## What Syrin Actually Is
+## What the Harness Gives You
 
-Syrin is a Python library for building AI agents where **control is the default, not the exception**.
-
-Every serious thing you need when your agent touches real users and real money is built in:
+Syrin is a Python library for building AI agents where **control is the default, not the exception**. Think of each capability as a strap in the harness — together they let you direct LLM power exactly where you need it, safely and predictably.
 
 **First-class budget enforcement.** Set a dollar limit. When the agent hits it, it stops — or warns you, or switches to a cheaper model. Your call. The $47K incident would have been a $1 error.
 
 **Budget-aware persistent memory.** Four distinct memory types — Core, Episodic, Semantic, Procedural — with decay curves, import-rank, vector backends, and cross-session persistence. Memory that costs tokens to read costs you money, so every memory operation respects your budget.
 
-**70+ lifecycle hooks.** Every LLM request, every tool call, every guardrail check, every memory read — they all fire an event you can subscribe to. Log to Datadog. Alert to PagerDuty. Debug at 2 AM. Nothing is hidden.
+**Isolated code execution (v0.12.0).** `Sandbox` runs LLM-generated Python, bash scripts, and JavaScript in fresh subprocesses — no shared state, hard timeouts, optional memory caps, packages auto-installed, and an async context manager for clean teardown. Zero external dependencies. The default `PROCESS` backend is pure stdlib. If your agent generates and runs code, it never runs in your process. Recursive sub-agent spawning via `RLMLoop` propagates the sandbox automatically to every spawned child.
+
+**72+ lifecycle hooks.** Every LLM request, every tool call, every guardrail check, every memory read, every sandbox exec — they all fire a typed event you can subscribe to. Log to Datadog. Alert to PagerDuty. Debug at 2 AM. Nothing is hidden.
 
 **Built-in guardrails.** PII detection and redaction, prompt injection detection, content filtering, fact verification, output length enforcement. These ship with the library, not as an enterprise plan.
 
@@ -48,7 +58,7 @@ Every serious thing you need when your agent touches real users and real money i
 
 **Checkpointing.** Long-running agents survive server restarts. Your 30-minute workflow picks up from step 14, not step 1.
 
-**Multi-agent swarms.** Multiple agents share a goal, a budget, and a memory bus. When one agent fails, the system degrades gracefully instead of collapsing.
+**Multi-agent orchestration.** Swarms with five topologies for structured workloads. Recursive sub-agent spawning (`agents=`) for open-ended decomposition. Both share budget, memory, and observability. When one agent fails, the system degrades gracefully instead of collapsing.
 
 **Agent identity.** Every agent has a cryptographic Ed25519 identity. Every inter-agent message is signed. Every kill command is verified. No agent impersonation.
 
@@ -109,10 +119,10 @@ class SupportAgent(Agent):
     model = Model.mock()
     system_prompt = "You are a technical support specialist."
     budget = Budget(max_cost=0.50, exceed_policy=ExceedPolicy.WARN)
-    memory = Memory(restrict_to=[MemoryType.CORE, MemoryType.EPISODIC])
+    memory = Memory(restrict_to=[MemoryType.FACTS, MemoryType.HISTORY])
 
 agent = SupportAgent()
-agent.remember("User prefers email notifications", memory_type=MemoryType.CORE)
+agent.remember("User prefers email notifications", memory_type=MemoryType.FACTS)
 response = agent.run("How do I reset my password?")
 print(response.content)
 print(f"Remaining budget: ${agent.budget_state.remaining:.4f}")
@@ -126,6 +136,37 @@ Remaining budget: $0.5000
 ```
 
 That is your agent. Your model. Your budget. Your memory. All in a class — no wiring, no config files, no hidden framework magic.
+
+## The Harness in Action — Safe Code Execution
+
+Here is the sandbox harness running a bash script and a Python analyzer in the same isolated workspace, with packages auto-installed and the workspace cleaned up automatically:
+
+```python
+import asyncio
+from syrin.sandbox import Sandbox
+
+async def run():
+    async with Sandbox(bash=True, python=True, packages=["statistics"]) as sb:
+        # Shell: generate data into the shared workspace
+        await sb.exec_bash("""
+        printf "10\n20\n30\n40\n50\n" > $SANDBOX_WORKSPACE/numbers.txt
+        """)
+
+        # Python: analyze it — same workspace, zero parent-process access
+        result = await sb.exec_python("""
+        import os, statistics
+        workspace = os.environ["SANDBOX_WORKSPACE"]
+        with open(os.path.join(workspace, "numbers.txt")) as f:
+            nums = [int(line.strip()) for line in f if line.strip()]
+        print(f"mean={statistics.mean(nums)}, stdev={statistics.stdev(nums):.2f}")
+        """)
+        print(result.stdout)   # "mean=30, stdev=15.81\n"
+    # Workspace deleted here — no cleanup call needed
+
+asyncio.run(run())
+```
+
+The LLM writes the scripts. Syrin ensures they cannot escape the workspace, cannot run past the timeout, and cannot consume unbounded memory. That is what a harness does.
 
 ## Why Python Classes?
 
@@ -165,6 +206,7 @@ Syrin has a lot of power. You do not need it all at once. Here is the path:
 - [A2A Communication](/agent-kit/multi-agent/a2a) — Agents talking to agents
 
 **Ship it — production:**
+- [Sandbox](/agent-kit/production/sandbox) — Safe code execution: exec_bash, exec_python, packages auto-install, context manager
 - [Serving](/agent-kit/production/serving) — HTTP, CLI, and playground UI
 - [Security](/agent-kit/security/pii-guardrail) — PII guardrail and agent identity
 - [Checkpointing](/agent-kit/production/checkpointing) — Survive server restarts

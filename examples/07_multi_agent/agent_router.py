@@ -12,7 +12,7 @@ Key concepts:
   - Hook.DYNAMIC_PIPELINE_END — final metrics
   - router.visualize() — print agent pool summary
 
-Note: AgentRouter was formerly DynamicPipeline (deprecated in v0.11.0).
+Note: AgentRouter was formerly DynamicPipeline.
 
 Run:
     OPENAI_API_KEY=sk-... uv run python examples/07_multi_agent/agent_router.py

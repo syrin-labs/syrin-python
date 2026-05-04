@@ -17,10 +17,17 @@ from syrin.observability import SemanticAttributes, SpanKind, SpanStatus
 
 
 def run_guardrails(agent: Agent, text: str, stage: GuardrailStage) -> GuardrailResult:
-    """Run guardrails on text. Excludes remotely disabled guardrails."""
+    """Run guardrails on text. Excludes remotely disabled guardrails and SYSTEM_PROMPT guardrails."""
+    from syrin.enums import GuardrailMode
+
     disabled = getattr(agent, "_guardrails_disabled", set()) or set()
     guardrail_list = getattr(agent._guardrails, "_guardrails", [])
-    effective = [g for g in guardrail_list if g.name not in disabled]
+    effective = [
+        g
+        for g in guardrail_list
+        if g.name not in disabled
+        and getattr(g, "mode", GuardrailMode.EVALUATE) != GuardrailMode.SYSTEM_PROMPT
+    ]
     if len(effective) == 0:
         return GuardrailResult(passed=True)
     effective_chain = GuardrailChain(effective)

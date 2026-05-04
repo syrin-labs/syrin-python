@@ -1,4 +1,4 @@
-"""SwarmObservability — cross-agent trace and budget dashboard (stub, Phase 4+)."""
+"""SwarmObservability — cross-agent trace and budget dashboard."""
 
 from __future__ import annotations
 
@@ -6,6 +6,6 @@ from __future__ import annotations
 class SwarmObservability:
     """Unified observability for all agents in a swarm.
 
-    .. note::
-        Full implementation arrives in Phase 4 of v0.11.0.
+    Aggregates traces, hook events, and budget metrics across all concurrently
+    running agents, providing a single view of swarm execution state.
     """

@@ -197,6 +197,72 @@ class TestMiddleOutTruncator:
         assert result.method == "middle_out_truncate"
         assert len(result.messages) < len(messages)
 
+    def test_system_message_always_preserved(self) -> None:
+        """System message must survive middle-out truncation regardless of budget."""
+        counter = TokenCounter()
+        system_content = "You are a helpful assistant with a unique identity."
+        messages = [{"role": "system", "content": system_content}]
+        # 12 non-system messages — enough to force real truncation
+        for i in range(12):
+            role = "user" if i % 2 == 0 else "assistant"
+            messages.append({"role": role, "content": f"turn {i}: " + "word " * 80})
+
+        truncator = MiddleOutTruncator()
+        result = truncator.compact(messages, budget=200, counter=counter)
+
+        roles_in_result = [m.get("role") for m in result.messages]
+        assert "system" in roles_in_result, "System message was dropped — it must always be kept"
+        sys_messages = [m for m in result.messages if m.get("role") == "system"]
+        assert sys_messages[0]["content"] == system_content
+
+    def test_middle_messages_actually_dropped(self) -> None:
+        """ALL middle-third messages must be absent from the result — not just some.
+
+        The bug: tail_size = len(non_system) - head_size makes the "tail" include
+        the entire middle section, so no middle messages are structurally dropped.
+        The fix: tail_size = len(non_system) // 3 (matching head_size) so the true
+        middle third is excluded from both head and tail.
+        """
+        counter = TokenCounter()
+        # 12 non-system messages labelled head-0..3, mid-4..7, tail-8..11
+        messages: list[dict[str, object]] = [{"role": "system", "content": "sys"}]
+        labels = ["head"] * 4 + ["mid"] * 4 + ["tail"] * 4
+        for i, label in enumerate(labels):
+            role = "user" if i % 2 == 0 else "assistant"
+            messages.append({"role": role, "content": f"{label}-{i}: " + "token " * 60})
+
+        truncator = MiddleOutTruncator()
+        result = truncator.compact(messages, budget=300, counter=counter)
+
+        result_contents = {m.get("content", "") for m in result.messages}
+        mid_contents = {
+            f"{label}-{i}: " + "token " * 60 for i, label in enumerate(labels) if label == "mid"
+        }
+        assert result.method == "middle_out_truncate", "Truncation should have been triggered"
+        mid_in_result = mid_contents & result_contents
+        assert len(mid_in_result) == 0, (
+            f"Middle messages must NOT appear in truncated result, but found: {mid_in_result}"
+        )
+
+    def test_head_and_tail_preserved_under_truncation(self) -> None:
+        """First and last non-system messages must appear in the truncated result."""
+        counter = TokenCounter()
+        messages: list[dict[str, object]] = []
+        # 9 non-system messages (enough to have a genuine middle)
+        for i in range(9):
+            role = "user" if i % 2 == 0 else "assistant"
+            messages.append({"role": role, "content": f"msg-{i}: " + "word " * 80})
+
+        truncator = MiddleOutTruncator()
+        result = truncator.compact(messages, budget=200, counter=counter)
+
+        if result.method == "none":
+            return  # budget was large enough — skip
+
+        result_contents = [m.get("content", "") for m in result.messages]
+        assert any("msg-0:" in str(c) for c in result_contents), "First message was dropped"
+        assert any("msg-8:" in str(c) for c in result_contents), "Last message was dropped"
+
 
 class TestContextCompactor:
     """Tests for ContextCompactor."""
@@ -219,6 +285,68 @@ class TestContextCompactor:
         result = compactor.compact(messages, 500)  # Small budget
         assert result.method != "none"
         assert result.tokens_after < result.tokens_before
+
+
+class TestSummarizerFallbackModel:
+    """Bug #9: Summarizer with compaction_model=None should use the agent model, not placeholder."""
+
+    def test_summarizer_uses_fallback_model_when_no_explicit_model(self) -> None:
+        """When Summarizer is constructed with model=None but a fallback is set, it uses the fallback."""
+        from unittest.mock import MagicMock
+
+        from syrin.context.compactors import Summarizer
+        from syrin.types import ProviderResponse
+
+        fake_model = MagicMock()
+        fake_response = MagicMock(spec=ProviderResponse)
+        fake_response.content = "Summarized: the user asked questions."
+        fake_response.usage = None
+        fake_model.complete.return_value = fake_response
+
+        # model=None at construction, but set fallback AFTER
+        summarizer = Summarizer(model=None)
+        summarizer.set_fallback_model(fake_model)
+
+        messages = [{"role": "system", "content": "sys"}]
+        for i in range(10):
+            messages.append(
+                {"role": "user" if i % 2 == 0 else "assistant", "content": f"msg {i} " + "x" * 50}
+            )
+
+        summarizer.summarize(messages)
+        # The fallback model should have been called (not the placeholder path)
+        assert fake_model.complete.called, (
+            "Summarizer with no explicit model but a fallback should call the fallback model, "
+            "not fall back to the placeholder '[N messages omitted]' string."
+        )
+
+    def test_summarizer_placeholder_when_no_model_and_no_fallback(self) -> None:
+        """When neither model nor fallback is set, Summarizer uses placeholder (existing behavior)."""
+        from syrin.context.compactors import Summarizer
+
+        summarizer = Summarizer(model=None)
+
+        messages = [{"role": "system", "content": "sys"}]
+        for i in range(10):
+            messages.append({"role": "user" if i % 2 == 0 else "assistant", "content": f"msg {i}"})
+
+        result = summarizer.summarize(messages)
+        # Should contain the placeholder marker
+        has_placeholder = any(
+            "[Previous conversation summary:" in str(m.get("content", "")) for m in result
+        )
+        assert has_placeholder, "When no model and no fallback, placeholder message must be used."
+
+    def test_context_compactor_set_fallback_model_threads_to_summarizer(self) -> None:
+        """ContextCompactor.set_fallback_model() must be available and propagate to its Summarizer."""
+        from unittest.mock import MagicMock
+
+        from syrin.context.compactors import ContextCompactor
+
+        compactor = ContextCompactor()
+        fake_model = MagicMock()
+        # Must not raise — method must exist
+        compactor.set_fallback_model(fake_model)
 
 
 class TestDefaultContextManager:

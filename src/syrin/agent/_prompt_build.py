@@ -129,6 +129,14 @@ def build_messages(agent: Agent, user_input: str | list[dict[str, object]]) -> l
             ),
         )
     resolved = resolve_system_prompt(agent, effective_vars, ctx)
+
+    guardrail_instructions = ""
+    guardrails = getattr(agent, "_guardrails", None)
+    if guardrails is not None and hasattr(guardrails, "system_prompt_instructions"):
+        guardrail_instructions = guardrails.system_prompt_instructions()
+    if guardrail_instructions:
+        resolved = f"{resolved}\n\n{guardrail_instructions}" if resolved else guardrail_instructions
+
     if emit:
         emit(Hook.SYSTEM_PROMPT_AFTER_RESOLVE, EventContext(resolved=resolved))
 

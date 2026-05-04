@@ -305,3 +305,156 @@ class TestMemoryStoreBudgetParams:
         """MemoryStore.budget kwarg no longer exists."""
         with pytest.raises(TypeError):
             MemoryStore(budget=object())  # type: ignore[call-arg]
+
+
+class TestMemoryAsyncContextManager:
+    """Memory.__aexit__ must close the backend connection."""
+
+    @pytest.mark.asyncio
+    async def test_aexit_closes_backend(self) -> None:
+        """async with Memory() must close the backend on exit."""
+        from unittest.mock import MagicMock
+
+        mem = Memory()
+        # Force backend initialisation to a mock so we can track close() calls
+        mock_backend = MagicMock()
+        mem._backend = mock_backend
+
+        async with mem:
+            pass  # trigger __aexit__
+
+        # close() sets _backend = None — backend.close() is called via Memory.close()
+        mock_backend.close.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_aexit_idempotent_when_no_backend(self) -> None:
+        """__aexit__ must not raise when no backend was ever initialised."""
+        mem = Memory()
+        # _backend is None — should not raise
+        async with mem:
+            pass
+
+
+class TestSilentNoOpWarnings:
+    """Memory must warn when fields that are planned-but-unimplemented are set to True."""
+
+    def test_auto_extract_true_emits_user_warning(self) -> None:
+        """Memory(auto_extract=True) must emit a UserWarning because it has no effect yet."""
+        import warnings
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            Memory(auto_extract=True)
+
+        user_warnings = [x for x in w if issubclass(x.category, UserWarning)]
+        assert len(user_warnings) >= 1, "Expected a UserWarning for auto_extract=True"
+        msg = str(user_warnings[0].message)
+        assert "auto_extract" in msg.lower(), (
+            f"Warning message must mention 'auto_extract', got: {msg}"
+        )
+
+    def test_auto_extract_false_no_warning(self) -> None:
+        """Memory(auto_extract=False) — the default — must NOT emit any warning."""
+        import warnings
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            Memory(auto_extract=False)
+
+        auto_warnings = [
+            x
+            for x in w
+            if issubclass(x.category, UserWarning) and "auto_extract" in str(x.message).lower()
+        ]
+        assert len(auto_warnings) == 0, "No warning expected when auto_extract=False"
+
+    def test_consolidation_resolve_contradictions_emits_user_warning(self) -> None:
+        """Memory(consolidation_resolve_contradictions=True) must warn — it's a planned no-op."""
+        import warnings
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            # True is the DEFAULT, so we need to check explicitly that True triggers it
+            Memory(consolidation_resolve_contradictions=True)
+
+        user_warnings = [x for x in w if issubclass(x.category, UserWarning)]
+        assert len(user_warnings) >= 1, (
+            "Expected a UserWarning for consolidation_resolve_contradictions=True"
+        )
+        msg = str(user_warnings[0].message)
+        assert "contradiction" in msg.lower() or "resolve" in msg.lower(), (
+            f"Warning must mention contradictions, got: {msg}"
+        )
+
+    def test_consolidation_resolve_contradictions_false_no_warning(self) -> None:
+        """Memory(consolidation_resolve_contradictions=False) must NOT warn."""
+        import warnings
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            Memory(consolidation_resolve_contradictions=False)
+
+        contradiction_warnings = [
+            x
+            for x in w
+            if issubclass(x.category, UserWarning)
+            and ("contradiction" in str(x.message).lower() or "resolve" in str(x.message).lower())
+        ]
+        assert len(contradiction_warnings) == 0, (
+            "No warning when consolidation_resolve_contradictions=False"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Bug #10 — MEMORY_EXTRACT hook infrastructure
+# ---------------------------------------------------------------------------
+
+
+class TestMemoryExtractHook:
+    """MEMORY_EXTRACT hook must have an emit path so hook infrastructure is in place for v0.13.0."""
+
+    def test_memory_store_emit_extract_hook_exists(self) -> None:
+        """MemoryStore must have an _emit_extract_hook method (the v0.13.0 integration point)."""
+        from syrin.memory.store import MemoryStore
+
+        store = MemoryStore()
+        assert hasattr(store, "_emit_extract_hook"), (
+            "MemoryStore must expose _emit_extract_hook() as the v0.13.0 extraction entry point. "
+            "Bug #10: MEMORY_EXTRACT hook has no emit path."
+        )
+
+    def test_memory_store_emit_extract_hook_fires_hook(self) -> None:
+        """When _emit_extract_hook is called, it must emit the memory.extract hook."""
+        from syrin.memory.store import MemoryStore
+
+        fired: list[tuple[str, object]] = []
+
+        store = MemoryStore()
+        store._hook_emit = lambda hook, data: fired.append((str(hook), data))  # type: ignore[assignment]
+
+        store._emit_extract_hook("User asked about Python.")
+
+        assert any("extract" in h for h, _ in fired), (
+            f"Expected a 'memory.extract' hook to be fired, got: {fired}"
+        )
+
+    def test_auto_store_turn_emits_extract_hook(self) -> None:
+        """_auto_store_turn must call _emit_extract_hook on the memory store."""
+        from unittest.mock import MagicMock
+
+        from syrin.agent._run import _auto_store_turn
+
+        mock_store = MagicMock()
+
+        mock_pm = MagicMock()
+        mock_pm.auto_store = True
+        mock_pm._store = mock_store
+
+        mock_agent = MagicMock()
+        mock_agent._persistent_memory = mock_pm
+        mock_agent._memory_backend = MagicMock()
+        mock_agent.remember = MagicMock(return_value=True)
+
+        _auto_store_turn(mock_agent, "Hello", "Hi there!")
+
+        mock_store._emit_extract_hook.assert_called_once()

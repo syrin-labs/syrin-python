@@ -146,10 +146,14 @@ def test_config_set_updates_attributes() -> None:
 # -----------------------------------------------------------------------------
 
 
-def test_configure_with_unknown_key_does_not_raise() -> None:
-    """configure() with unknown keys should not raise (only known attrs updated)."""
-    # Implementation may ignore unknown keys
-    syrin.configure(unknown_key="ignored")  # type: ignore[call-arg]
+def test_configure_with_unknown_key_raises() -> None:
+    """configure() with unknown keys must raise ConfigurationError."""
+    import pytest
+
+    from syrin.exceptions import ConfigurationError
+
+    with pytest.raises(ConfigurationError, match="unknown_key"):
+        syrin.configure(unknown_key="ignored")  # type: ignore[call-arg]
 
 
 def test_config_default_model_property() -> None:

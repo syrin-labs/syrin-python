@@ -126,8 +126,15 @@ class AgentRegistry:
                 Defaults to 5.0 seconds.
         """
         self._agents: dict[str, _RegistryEntry] = {}
-        self._lock: asyncio.Lock = asyncio.Lock()
+        self.__lock: asyncio.Lock | None = None
         self._heartbeat_interval: float = heartbeat_interval
+
+    @property
+    def _lock(self) -> asyncio.Lock:
+        """Lazily create the asyncio.Lock on first use inside an event loop."""
+        if self.__lock is None:
+            self.__lock = asyncio.Lock()
+        return self.__lock
 
     async def register(  # type: ignore[explicit-any]
         self,

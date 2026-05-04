@@ -58,6 +58,38 @@ class GuardrailChain:
         """
         self._guardrails.append(guardrail)
 
+    def system_prompt_instructions(self) -> str:
+        """Return concatenated instructions from all SYSTEM_PROMPT mode guardrails."""
+        from syrin.enums import GuardrailMode
+
+        instructions = []
+        for g in self._guardrails:
+            if g.mode == GuardrailMode.SYSTEM_PROMPT:
+                instr = g.system_prompt_instruction()
+                if instr and instr.strip():
+                    instructions.append(instr)
+        return "\n".join(instructions)
+
+    def _system_prompt_filtered(self) -> list[Guardrail]:
+        """Return only SYSTEM_PROMPT mode guardrails."""
+        from syrin.enums import GuardrailMode
+
+        return [
+            g
+            for g in self._guardrails
+            if getattr(g, "mode", GuardrailMode.EVALUATE) == GuardrailMode.SYSTEM_PROMPT
+        ]
+
+    def _evaluate_only(self) -> list[Guardrail]:
+        """Return only EVALUATE mode guardrails."""
+        from syrin.enums import GuardrailMode
+
+        return [
+            g
+            for g in self._guardrails
+            if getattr(g, "mode", GuardrailMode.EVALUATE) != GuardrailMode.SYSTEM_PROMPT
+        ]
+
     async def evaluate(self, context: GuardrailContext) -> EvaluationResult:
         """Evaluate guardrails in sequence.
 

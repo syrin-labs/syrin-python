@@ -18,6 +18,7 @@ from syrin.workflow.exceptions import WorkflowCancelledError
 if TYPE_CHECKING:
     from syrin.agent._core import Agent
     from syrin.budget import Budget
+    from syrin.resource._pool import ResourcePool
     from syrin.response import Response
     from syrin.swarm._agent_ref import AgentRef
     from syrin.swarm._control import SwarmController
@@ -212,6 +213,7 @@ class Swarm:
         config: SwarmConfig | None = None,
         pry: bool = False,
         workflow: Workflow | None = None,
+        pool: ResourcePool | None = None,
     ) -> None:
         """Initialise a Swarm.
 
@@ -228,6 +230,8 @@ class Swarm:
             pry: Enable Pry multi-agent debugger (future feature).
             workflow: Optional :class:`~syrin.workflow.Workflow` for
                 :attr:`~syrin.enums.SwarmTopology.WORKFLOW` topology runs.
+            pool: Optional :class:`~syrin.resource.ResourcePool` for
+                swarm-level rate and concurrency coordination.
 
         Raises:
             ValueError: If ``agents`` is empty or ``goal`` is blank.
@@ -252,6 +256,7 @@ class Swarm:
         self.config: SwarmConfig = config or SwarmConfig()
         self.pry: bool = pry
         self._workflow: Workflow | None = workflow
+        self.pool: ResourcePool | None = pool
 
         # Expand team members from Agent.team ClassVar
         self._expand_team_agents()

@@ -1,4 +1,4 @@
-"""Cost history recording for budget intelligence (Phase 6).
+"""Cost history recording for budget intelligence.
 
 This module provides persistent cost history storage and statistics for
 agents. Recorded costs are used by CostEstimator for pre-flight validation
@@ -75,21 +75,6 @@ class CostStats:
     mean: float
     stddev: float
     trend_weekly_pct: float
-
-    @property
-    def avg_cost(self) -> float:
-        """Deprecated alias for :attr:`mean`.
-
-        .. deprecated::
-            Use :attr:`mean` instead. ``avg_cost`` will be removed in a future
-            version.
-        """
-        warnings.warn(
-            "CostStats.avg_cost is deprecated; use CostStats.mean instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.mean
 
 
 @runtime_checkable

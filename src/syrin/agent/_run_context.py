@@ -262,3 +262,8 @@ class DefaultAgentRunContext:
     @property
     def retry_backoff_base(self) -> float:
         return getattr(self._agent, "_retry_backoff_base", 1.0)
+
+    @property
+    def resource_tracker(self) -> object:
+        """Return the ResourceTracker for this run, or None if no resource is configured."""
+        return getattr(self._agent, "_resource_tracker", None)

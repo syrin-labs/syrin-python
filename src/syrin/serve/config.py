@@ -5,12 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TypedDict
 
-from syrin.enums import ServeProtocol
+from syrin.enums import ServeAs, ServeProtocol
 
 
 class ServeConfigKwargs(TypedDict, total=False):
     """Keyword arguments for building ServeConfig."""
 
+    serve_as: ServeAs
     protocol: ServeProtocol
     host: str
     port: int
@@ -24,7 +25,7 @@ class ServeConfigKwargs(TypedDict, total=False):
 
 @dataclass
 class ServeConfig:
-    """Configuration for agent.serve() and the HTTP/CLI/STDIO serving layer.
+    """Configuration for agent.serve() and the HTTP/CLI/STDIO/MCP serving layer.
 
     Use when calling ``agent.serve(**config)`` or ``agent.serve(config=ServeConfig(...))``.
     All fields have sensible defaults; override only what you need.
@@ -38,8 +39,13 @@ class ServeConfig:
     OAuth, etc. from Starlette or other libraries.
 
     Attributes:
-        protocol: Which serving mode to use. HTTP (default) for REST + optional playground,
+        serve_as: What interface to expose. AGENT (default) serves Syrin REST/CLI/STDIO
+            endpoints. MCP serves a Model Context Protocol server, making the agent
+            callable from Claude Code, Claude Desktop, Cursor, Dify, n8n, and any
+            MCP-compatible host. Transport is still controlled by ``protocol``.
+        protocol: Which transport to use. HTTP (default) for REST + optional playground,
             CLI for interactive REPL, STDIO for JSON lines over stdin/stdout.
+            When serve_as=MCP, STDIO is typical for Claude Code; HTTP for web platforms.
         host: Bind address for HTTP server. "0.0.0.0" allows external connections.
         port: HTTP port. Default 8000.
         route_prefix: Prefix for all routes. E.g. "/agent" → /agent/chat, /agent/stream.
@@ -57,6 +63,7 @@ class ServeConfig:
             exceeded. Default 100_000 (~25K tokens). Prevents DoS via oversized payloads.
     """
 
+    serve_as: ServeAs = ServeAs.AGENT
     protocol: ServeProtocol = ServeProtocol.HTTP
     host: str = "0.0.0.0"
     port: int = 8000

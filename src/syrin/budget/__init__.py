@@ -82,20 +82,20 @@ __all__ = [
     "TokenLimits",
     "TokenRateLimit",
     "BudgetThreshold",
-    # Phase 6: History
+    # History
     "BudgetStoreProtocol",
     "CostRecord",
     "CostStats",
     "FileBudgetStore",
     "RollingBudgetStore",
-    # Phase 6: Estimation
+    # Estimation
     "CostEstimator",
     "CostEstimate",
     "EstimationReport",
-    # Phase 6: Preflight
+    # Preflight
     "InsufficientBudgetError",
     "PreflightPolicy",
-    # Phase 6: Guardrails
+    # Guardrails
     "AnomalyConfig",
     "BudgetGuardrails",
     "BudgetLimitError",

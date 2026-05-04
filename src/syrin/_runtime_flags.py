@@ -12,8 +12,11 @@ example scripts rely on.
 from __future__ import annotations
 
 import atexit
+import logging
 import sys
 from typing import cast
+
+_bootstrap_log = logging.getLogger("syrin.bootstrap")
 
 _trace_enabled = False
 _debug_pry: object = None
@@ -96,8 +99,8 @@ def _auto_debug_check() -> None:
         _debug_pry = Pry.from_debug_flag()
         if _debug_pry is not None:
             _debug_pry.start()
-    except Exception:
-        pass
+    except Exception as exc:
+        _bootstrap_log.debug("Pry debug setup failed (--debug ignored): %s", exc)
 
 
 def _auto_log_level_check() -> None:
@@ -125,8 +128,8 @@ def _auto_log_level_check() -> None:
         root_logger = _logging.getLogger("syrin")
         root_logger.setLevel(level)
         root_logger.addHandler(handler)
-    except Exception:
-        pass
+    except Exception as exc:
+        _bootstrap_log.debug("Log-level setup failed (--log-level %s ignored): %s", level_str, exc)
 
 
 def get_debug_pry() -> object:

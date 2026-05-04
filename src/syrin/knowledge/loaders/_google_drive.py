@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import os
 import re
 import tempfile
@@ -123,8 +122,16 @@ class GoogleDriveLoader:
         return self._folder
 
     def load(self) -> list[Document]:
-        """Load synchronously. Not implemented; use aload()."""
-        raise NotImplementedError("GoogleDriveLoader requires async. Use aload()")
+        """Load documents synchronously. Calls aload() via asyncio.run().
+
+        For use in already-async contexts prefer aload() directly.
+
+        Returns:
+            List of Documents from matching files.
+        """
+        import asyncio
+
+        return asyncio.run(self.aload())
 
     async def aload(self) -> list[Document]:
         """Load documents from the Google Drive folder.
@@ -362,24 +369,22 @@ class GoogleDriveLoader:
         suffix: str,
     ) -> str:
         """Write bytes to temp file and use existing loader to extract text."""
-        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tf:
-            tf.write(data)
-            tmp_path = tf.name
-
         loader: DocumentLoader
-        try:
+        with tempfile.NamedTemporaryFile(suffix=suffix) as tf:
+            tf.write(data)
+            tf.flush()
             if loader_type == "pdf":
                 from syrin.knowledge.loaders._pdf import PDFLoader
 
-                loader = PDFLoader(tmp_path)
+                loader = PDFLoader(tf.name)
             elif loader_type == "docx":
                 from syrin.knowledge.loaders._docx import DOCXLoader
 
-                loader = DOCXLoader(tmp_path, use_docling=True)
+                loader = DOCXLoader(tf.name, use_docling=True)
             elif loader_type == "excel":
                 from syrin.knowledge.loaders._excel import ExcelLoader
 
-                loader = ExcelLoader(tmp_path)
+                loader = ExcelLoader(tf.name)
             else:
                 try:
                     return data.decode("utf-8")
@@ -388,9 +393,6 @@ class GoogleDriveLoader:
 
             loop = asyncio.get_event_loop()
             docs = await loop.run_in_executor(None, loader.load)
-        finally:
-            with contextlib.suppress(OSError):
-                Path(tmp_path).unlink(missing_ok=True)
 
         if not docs:
             return ""

@@ -69,9 +69,9 @@ class TestImportFromBasic:
     def test_import_appends_to_existing(self) -> None:
         mem = Memory()
         mem.remember("existing memory")
-        initial = len(mem.recall("", count=100))
+        initial = len(mem.recall("", limit=100))
         mem.import_from(_snapshot(_entry("new memory")))
-        after = len(mem.recall("", count=100))
+        after = len(mem.recall("", limit=100))
         assert after >= initial  # May or may not be +1 depending on scoring/decay
 
     def test_core_memory_type_accepted(self) -> None:

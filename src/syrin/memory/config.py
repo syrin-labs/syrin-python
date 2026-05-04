@@ -180,7 +180,7 @@ class Memory(BaseModel):  # type: ignore[explicit-any]
             user, password, table.
         types: Memory types to enable. None (default) = all types enabled. Set to a list
             to restrict (e.g. [MemoryType.FACTS, MemoryType.HISTORY]).
-        auto_extract: When implemented, extract facts from turns into semantic memory. Currently a placeholder.
+        auto_extract: When True, extract facts from conversation turns into semantic memory automatically. Currently has no effect; enable manually via memory.remember().
         extraction_model: Model for extraction when auto_extract is used. None = use agent's model.
         top_k: Max memories to recall per query. Higher = more context, higher cost.
         relevance_threshold: Min similarity (0-1) for recall. Filter out low-relevance.
@@ -193,7 +193,7 @@ class Memory(BaseModel):  # type: ignore[explicit-any]
         consolidation_interval: How often background consolidation runs (e.g. '1h', '30m'). None = disabled.
         consolidation_deduplicate: Remove duplicate memories during consolidation. Default: True.
         consolidation_compress_after: Age threshold for compression (e.g. '7d'). None = no compression.
-        consolidation_resolve_contradictions: Detect and resolve contradictory memories. Default: True.
+        consolidation_resolve_contradictions: When True, detect and resolve contradictory memories during consolidation. Default: True.
         consolidation_model: Model used during consolidation. None = use agent's model.
         scope: MemoryScope for isolation: USER (default), SESSION (per conversation), AGENT, or GLOBAL.
         redact_pii: Redact PII before storage.
@@ -267,7 +267,7 @@ class Memory(BaseModel):  # type: ignore[explicit-any]
 
     auto_extract: bool = Field(
         default=False,
-        description="When True: extract facts from turns into semantic memory. Currently a placeholder — has no effect until extraction is implemented.",
+        description="When True, automatically extract facts from conversation turns into semantic memory. Enable manual extraction via memory.remember().",
     )
     extraction_model: str | None = Field(
         default=None,
@@ -343,7 +343,7 @@ class Memory(BaseModel):  # type: ignore[explicit-any]
     )
     consolidation_resolve_contradictions: bool = Field(
         default=True,
-        description="Detect and resolve contradictory memories during consolidation.",
+        description="When True, detect and resolve contradictory memories during consolidation.",
     )
     consolidation_model: str | None = Field(
         default=None,
@@ -469,6 +469,22 @@ class Memory(BaseModel):  # type: ignore[explicit-any]
 
     def _init_store(self) -> None:
         """Initialize MemoryStore (for MEMORY backend) or leave for lazy backend init."""
+        if self.auto_extract:
+            warnings.warn(
+                "Memory(auto_extract=True) has no effect. "
+                "Facts are not extracted automatically from conversation turns. "
+                "Use memory.remember() to store facts explicitly.",
+                UserWarning,
+                stacklevel=4,
+            )
+        if self.consolidation_resolve_contradictions:
+            warnings.warn(
+                "Memory(consolidation_resolve_contradictions=True) has no effect. "
+                "Contradiction detection during consolidation is not supported. "
+                "Set consolidation_resolve_contradictions=False to silence this warning.",
+                UserWarning,
+                stacklevel=4,
+            )
         if self.backend == MemoryBackend.MEMORY:
             from syrin.memory.store import MemoryStore
 
@@ -525,9 +541,6 @@ class Memory(BaseModel):  # type: ignore[explicit-any]
         query: str = "",
         memory_type: MemoryType | None = None,
         limit: int | None = None,
-        *,
-        count: int | None = None,
-        top_k: int | None = None,
     ) -> list[MemoryEntry]:
         """Recall memories matching query or type.
 
@@ -535,8 +548,6 @@ class Memory(BaseModel):  # type: ignore[explicit-any]
             query: Search query. Empty string lists all (up to limit).
             memory_type: Filter by memory type. None = all types.
             limit: Maximum results to return. Default: 10.
-            count: Deprecated alias for limit. Use limit instead.
-            top_k: Deprecated alias for limit. Use limit instead.
 
         Returns:
             List of matching MemoryEntries, sorted by importance.
@@ -548,23 +559,6 @@ class Memory(BaseModel):  # type: ignore[explicit-any]
             >>> [e.content for e in entries]
             ['User prefers Python']
         """
-        # D3: standardize on limit; deprecation warnings for old aliases
-        if count is not None:
-            warnings.warn(
-                "Memory.recall(count=) is deprecated; use limit= instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if limit is None:
-                limit = count
-        if top_k is not None:
-            warnings.warn(
-                "Memory.recall(top_k=) is deprecated; use limit= instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if limit is None:
-                limit = top_k
         effective_limit = limit if limit is not None else 10
 
         if self.backend == MemoryBackend.MEMORY:
@@ -816,19 +810,22 @@ class Memory(BaseModel):  # type: ignore[explicit-any]
         *,
         deduplicate: bool | None = None,
         consolidation_budget: float | None = None,
+        compress_after: str | None = None,
     ) -> int:
-        """Run memory consolidation (deduplicate by content). Optional, budget-aware.
+        """Run memory consolidation: deduplicate and optionally compress old entries.
 
-        Uses ``consolidation_deduplicate`` setting by default; pass ``deduplicate``
-        to override for this call. Respects ``budget_consolidation`` when set.
-        Only MEMORY backend supports consolidation; vector backends return 0.
+        Uses ``consolidation_deduplicate`` and ``consolidation_compress_after`` settings
+        by default; pass parameters to override for this call. Respects
+        ``budget_consolidation`` when set. Only MEMORY backend supports consolidation;
+        vector backends return 0.
 
         Args:
             deduplicate: Override ``consolidation_deduplicate`` for this call.
             consolidation_budget: Override ``budget_consolidation`` for this call.
+            compress_after: Override ``consolidation_compress_after`` for this call.
 
         Returns:
-            Number of duplicate entries removed.
+            Number of entries removed (via dedup or compression).
         """
         if self.backend != MemoryBackend.MEMORY:
             return 0
@@ -838,9 +835,13 @@ class Memory(BaseModel):  # type: ignore[explicit-any]
         budget = (
             consolidation_budget if consolidation_budget is not None else self.budget_consolidation
         )
+        compress = (
+            compress_after if compress_after is not None else self.consolidation_compress_after
+        )
         return self._store.consolidate(
             deduplicate=dedup,
             consolidation_budget=budget,
+            compress_after=compress,
         )
 
     def _get_segment_store(self) -> object:
@@ -1231,7 +1232,8 @@ class Memory(BaseModel):  # type: ignore[explicit-any]
         exc_val: BaseException | None,
         exc_tb: object,
     ) -> None:
-        """D12: Async context manager exit. Does not suppress exceptions."""
+        """D12: Async context manager exit. Closes backend connections. Does not suppress exceptions."""
+        self.close()
 
     model_config = {"arbitrary_types_allowed": True}
 

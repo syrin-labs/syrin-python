@@ -1,10 +1,5 @@
-"""Context manager protocol on Agent and Memory: __aenter__ / __aexit__.
-
-Tests that:
-- Memory supports `async with Memory() as mem:`
-- Agent supports `async with Agent(...) as agent:`
-- __aexit__ cleans up without raising on normal exit
-- __aexit__ propagates exceptions (does not suppress)
+"""Tests for context manager protocol on Agent and Memory: __aenter__ / __aexit__,
+cleanup on exit, and exception propagation.
 """
 
 from __future__ import annotations

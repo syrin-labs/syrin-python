@@ -201,7 +201,7 @@ class Knowledge:
             chunk_language: Source language for CODE strategy (e.g. "python"). Default None.
             top_k: Max results per search. Default 5.
             score_threshold: Minimum similarity score for search results. Default 0.3.
-            auto_sync: Enable file watching (not yet implemented).
+            auto_sync: Enable file watching for automatic document reload.
             sync_interval: Seconds between sync checks (0 = file watcher).
             agentic: Enable agentic retrieval (decompose, grade, refine, verify tools).
             agentic_max_iterations: Max refinement loops in agentic retrieval. Default 3.
@@ -229,6 +229,15 @@ class Knowledge:
             )
         if not sources:
             raise ValueError("sources must be a non-empty list of DocumentLoaders")
+        if auto_sync:
+            import warnings
+
+            warnings.warn(
+                "Knowledge(auto_sync=True) has no effect — file watching is not currently supported. "
+                "Call knowledge.sync() manually to reload changed documents.",
+                UserWarning,
+                stacklevel=2,
+            )
 
         self._agentic = agentic
         self._agentic_config = (

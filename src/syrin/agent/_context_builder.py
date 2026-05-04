@@ -105,6 +105,16 @@ def build_messages(
             result_attr=("MEMORY_RESULTS_COUNT", len),
         )
         if memories:
+            from syrin.enums import InjectionStrategy
+
+            strategy = getattr(
+                persistent_memory, "injection_strategy", InjectionStrategy.ATTENTION_OPTIMIZED
+            )
+            if strategy == InjectionStrategy.CHRONOLOGICAL:
+                memories = sorted(memories, key=lambda m: getattr(m, "created_at", None) or None)  # type: ignore[call-overload]
+            elif strategy == InjectionStrategy.ATTENTION_OPTIMIZED:
+                memories = sorted(memories, key=lambda m: getattr(m, "importance", 0.5))  # type: ignore[call-overload]
+
             memory_context = "## Relevant Memories:\n"
             for mem in memories:  # type: ignore[attr-defined]
                 type_val = getattr(mem, "type", None)

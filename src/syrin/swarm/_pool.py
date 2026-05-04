@@ -1,4 +1,4 @@
-"""BudgetPool — internal shared budget pool for swarms (stub, Phase 2+)."""
+"""BudgetPool — internal shared budget pool for swarms."""
 
 from __future__ import annotations
 
@@ -6,6 +6,6 @@ from __future__ import annotations
 class BudgetPool:
     """Thread/async-safe shared budget pool for a :class:`~syrin.swarm.Swarm`.
 
-    .. note::
-        Full implementation arrives in Phase 2 of v0.11.0.
+    Distributes a shared budget across concurrently running swarm agents,
+    tracking spend and enforcing limits across the swarm lifecycle.
     """

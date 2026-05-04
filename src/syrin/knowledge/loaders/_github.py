@@ -57,14 +57,6 @@ class GitHubLoader:
         """Repository names to fetch; None means all public repos."""
         return self._repos
 
-    def load(self) -> list[Document]:
-        """Load GitHub content synchronously.
-
-        Returns:
-            List of Documents with repository information.
-        """
-        raise NotImplementedError("GitHubLoader requires async. Use aload()")
-
     async def aload(self) -> list[Document]:
         """Load GitHub content asynchronously.
 

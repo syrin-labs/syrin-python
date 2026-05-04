@@ -1,4 +1,4 @@
-"""Phase 8 budget bug fix tests (TDD red phase)."""
+"""Tests for budget store integrity (HMAC) and TokenUsage extended fields."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import pytest
 from syrin.budget._history import FileBudgetStore
 
 # ---------------------------------------------------------------------------
-# SEC-08: FileBudgetStore HMAC integrity
+# FileBudgetStore HMAC integrity
 # ---------------------------------------------------------------------------
 
 
@@ -17,7 +17,7 @@ _HMAC_KEY = b"test-secret-key-32bytes-12345678"
 
 
 class HMACFileBudgetStore(FileBudgetStore):
-    """FileBudgetStore subclass with HMAC integrity checking (Phase 8 SEC-08)."""
+    """FileBudgetStore subclass with HMAC integrity checking."""
 
     def __init__(self, path: Path | str, key: bytes) -> None:
         """Init with HMAC key.

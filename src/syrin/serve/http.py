@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import time
 from contextlib import suppress
 from typing import TYPE_CHECKING
+
+_log = logging.getLogger("syrin.serve")
 
 if TYPE_CHECKING:
     from syrin.agent import Agent
@@ -27,11 +30,9 @@ def _add_startup_endpoint_logging(app: object, config: ServeConfig | None = None
                 lines.append(f"  {methods:6} {route.path}")
                 if "/mcp" in (route.path or ""):
                     has_mcp = True
-        print("\n".join(lines) + "\n", flush=True)
+        _log.info("\n".join(lines))
         if config is not None and config.protocol.value == "http":
-            import logging
-
-            logging.getLogger("syrin.serve").warning(
+            _log.warning(
                 "Serving agent without authentication. Add auth middleware for production. "
                 "See docs: https://syrin.dev/docs/serving#auth"
             )
@@ -41,7 +42,7 @@ def _add_startup_endpoint_logging(app: object, config: ServeConfig | None = None
             from syrin.mcp.stdio import _syrin_cli_message
 
             use_color = getattr(sys.stdout, "isatty", lambda: False)()
-            print(_syrin_cli_message(use_color=use_color), flush=True)
+            _log.info(_syrin_cli_message(use_color=use_color))
 
 
 def _to_json_serializable(obj: object) -> object:

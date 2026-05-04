@@ -367,3 +367,138 @@ class InputTooLargeError(SyrinError):
         super().__init__(message)
         self.input_length = input_length
         self.max_length = max_length
+
+
+class ResourceExceededError(SyrinError):
+    """Raised when any resource limit configured on a Resource is hit.
+
+    Check the message for which limit was exceeded (max_tools, max_steps,
+    max_context, or timeout).
+
+    Attributes:
+        message: Human-readable description of the exceeded limit.
+        dimension: Which resource dimension was exceeded (optional).
+        limit: The configured limit value (optional).
+        used: The current usage at the time of the error (optional).
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        dimension: str | None = None,
+        limit: int | float | None = None,
+        used: int | float | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.dimension = dimension
+        self.limit = limit
+        self.used = used
+
+
+class ResourcePoolError(SyrinError):
+    """Base for all ResourcePool errors."""
+
+    pass
+
+
+class ResourcePoolFullError(ResourcePoolError):
+    """Raised when pool is full and overflow=REJECT.
+
+    Attributes:
+        pool_id: Pool identifier.
+        dimension: Which limit was hit ('rpm', 'tpm', 'concurrency').
+        requested: Amount requested.
+        available: Amount available.
+    """
+
+    def __init__(
+        self,
+        msg: str,
+        *,
+        pool_id: str,
+        dimension: str,
+        requested: float,
+        available: float,
+    ) -> None:
+        super().__init__(msg)
+        self.pool_id = pool_id
+        self.dimension = dimension
+        self.requested = requested
+        self.available = available
+
+
+class ResourceAllocationError(ResourcePoolError):
+    """Raised when an agent cannot be allocated in the pool.
+
+    Attributes:
+        agent_id: Agent identifier.
+        reason: Why allocation failed.
+    """
+
+    def __init__(
+        self,
+        msg: str,
+        *,
+        agent_id: str,
+        reason: str,
+    ) -> None:
+        super().__init__(msg)
+        self.agent_id = agent_id
+        self.reason = reason
+
+
+class ResourceTimeoutError(ResourceExceededError):
+    """Raised when the wall-clock timeout configured on Resource is exceeded.
+
+    Subclass of :class:`ResourceExceededError`; always has
+    ``dimension="timeout"``.
+
+    Attributes:
+        message: Human-readable description.
+        timeout: The configured timeout in seconds.
+        elapsed: Elapsed time when the timeout was hit.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        timeout: float | None = None,
+        elapsed: float | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            dimension="timeout",
+            limit=timeout,
+            used=elapsed,
+        )
+        self.timeout = timeout
+        self.elapsed = elapsed
+
+
+class ConfigurationError(SyrinError):
+    """Raised when an invalid configuration key or value is provided to :func:`~syrin.configure`.
+
+    Attributes:
+        message: Human-readable description of what went wrong.
+        unknown_keys: Set of unrecognised key names that were passed.
+        valid_keys: Set of valid key names for reference.
+
+    Example::
+
+        import syrin
+        syrin.configure(trace=False)  # OK
+        syrin.configure(trce=True)    # raises ConfigurationError: unknown key 'trce'
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        unknown_keys: set[str] | None = None,
+        valid_keys: frozenset[str] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.unknown_keys: set[str] = unknown_keys or set()
+        self.valid_keys: frozenset[str] = valid_keys or frozenset()

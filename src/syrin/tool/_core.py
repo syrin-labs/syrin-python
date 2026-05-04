@@ -424,20 +424,9 @@ def tool(  # type: ignore[explicit-any]
             f, param_descriptions=final_param_descs or None
         )
 
-        # Resolve depends_on — accept ToolSpec objects or strings.
-        # String form is deprecated; pass the ToolSpec object directly for compile-time safety.
         _depends: list[str] = []
         for d in depends_on or []:
-            if isinstance(d, str):
-                warnings.warn(
-                    f"depends_on=['{d}'] uses a raw string. "
-                    f"Pass the ToolSpec object directly (depends_on=[{d}]) to catch "
-                    "renames and deletions at import time.",
-                    DeprecationWarning,
-                    stacklevel=3,
-                )
-                _depends.append(d)
-            elif hasattr(d, "name"):
+            if hasattr(d, "name"):
                 _depends.append(d.name)
 
         return ToolSpec(

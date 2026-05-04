@@ -146,6 +146,31 @@ class MultiProviderAgent(Agent):
     circuit_breaker = breaker_primary
 ```
 
+## Atomic Check and Record
+
+When building custom integrations, calling `is_open()` and then `record_success()` or
+`record_failure()` separately introduces a race window between the two calls. The
+`check_and_record()` method eliminates this by performing both operations under a single lock:
+
+```python
+breaker = CircuitBreaker(failure_threshold=3, recovery_timeout=60)
+
+# Atomic: checks state AND records outcome in one lock hold
+success = True  # or False if the call failed
+allowed = breaker.check_and_record(success=success)
+
+if not allowed:
+    # Circuit was OPEN — request was blocked
+    raise CircuitBreakerOpenError("Circuit is open")
+```
+
+`check_and_record(success=True)` records a successful call and returns `True` (request allowed).
+`check_and_record(success=False)` records a failure — tripping the circuit at threshold — and
+returns `False` if the circuit was already OPEN.
+
+Use this in high-concurrency code where two threads could both pass `is_open()` before either
+records a failure.
+
 ## Testing Circuit Breaker Behavior
 
 ```python

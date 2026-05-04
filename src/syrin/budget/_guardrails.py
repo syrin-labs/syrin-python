@@ -1,4 +1,4 @@
-"""Budget guardrails — static checks for fanout, daily limits, retry spend, and anomalies (Phase 6).
+"""Budget guardrails — static checks for fanout, daily limits, retry spend, and anomalies.
 
 All methods are static (no state). Import and call them at the relevant
 checkpoints in your orchestration code.

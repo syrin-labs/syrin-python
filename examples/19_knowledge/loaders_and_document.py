@@ -71,8 +71,11 @@ def main() -> None:
     # loader = Knowledge.DOCX("board.docx")      # Requires syrin[docx] or syrin[docling]
     # loader = Knowledge.CSV("data.csv")         # No extra deps
     # loader = Knowledge.Excel("sheet.xlsx")     # Requires syrin[excel]
+    # Async-only loaders (URL, GitHub, GoogleDrive) — use aload() or pass to Knowledge(sources=[])
     # loader = Knowledge.GitHub("org", repos=["repo1", "repo2"])
-    # docs = loader.load()  # or await loader.aload() for async loaders
+    # docs = await loader.aload()
+    # loader = Knowledge.URL("https://example.com/docs")
+    # docs = await loader.aload()
 
     print("OK: Document and loaders work.")
 

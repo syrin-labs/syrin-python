@@ -301,6 +301,9 @@ disable_error_code = ["unused-ignore", "no-any-return"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 addopts = "-v --tb=short -W ignore::ResourceWarning"
+markers = [
+    "slow: marks tests as slow (>2s each) — run with -m slow to select",
+]
 filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore:@tool.*has no description:UserWarning",
@@ -321,9 +324,10 @@ exclude_lines = [
 dev = [
     "mypy>=1.19.1",
     "pip-audit>=2.10.0",
-    "pytest>=9.0.2",
+    "pytest>=9.0.3",
     "pytest-asyncio>=1.3.0",
     "pytest-cov>=7.0.0",
     "ruff>=0.15.1",
     "numpy>=2.4.2",
+    "python-multipart>=0.0.26",
 ]

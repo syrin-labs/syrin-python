@@ -84,6 +84,10 @@ class AgentContextComponent:
     def token_limits(self) -> TokenLimits | None:
         return self._token_limits
 
+    @token_limits.setter
+    def token_limits(self, value: TokenLimits | None) -> None:
+        self._token_limits = value
+
 
 class AgentMemoryComponent:
     """Persistent memory and backend. Agent delegates _persistent_memory and _memory_backend to this."""

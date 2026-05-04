@@ -1,4 +1,4 @@
-"""Budget estimation for pre-flight cost analysis (v0.11.0+).
+"""Budget estimation for pre-flight cost analysis.
 
 Estimates the expected cost of a set of agents without making any LLM calls.
 Uses (in priority order): agent.output_tokens_estimate class attribute,

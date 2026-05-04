@@ -25,9 +25,12 @@ import traceback
 from collections.abc import Awaitable, Callable
 from contextlib import nullcontext
 from dataclasses import dataclass, field
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from syrin.agent._run_context import AgentRunContext
+
+if TYPE_CHECKING:
+    from syrin.sandbox._config import Sandbox
 
 _log = logging.getLogger(__name__)
 from syrin.enums import Hook, MessageRole, StopReason
@@ -444,6 +447,15 @@ class ReactLoop(Loop):
                 ),
             )
 
+            # Fire ResourceThreshold callbacks after each LLM iteration
+            _resource_tracker = getattr(ctx, "resource_tracker", None)
+            if _resource_tracker is not None:
+                _rt_state = _resource_tracker.state(
+                    steps=iteration,
+                    context_tokens=response.token_usage.total_tokens,
+                )
+                _resource_tracker.check_thresholds(_rt_state)
+
             if not response.tool_calls:
                 break
 
@@ -480,7 +492,11 @@ class ReactLoop(Loop):
                         approved = await gate.request(
                             message=f"Tool {tool_name!r} requested with args: {tool_args}",
                             timeout=timeout,
-                            context={"tool_name": tool_name, "arguments": tool_args},
+                            context={
+                                "tool_name": tool_name,
+                                "arguments": tool_args,
+                                "session_id": None,
+                            },
                         )
                     else:
                         approved = False
@@ -502,6 +518,36 @@ class ReactLoop(Loop):
                         )
                     )
                     continue
+
+                # Resource: record tool call; raises on STOP limit, returns False on DEGRADE
+                _resource_tracker = getattr(ctx, "resource_tracker", None)
+                if _resource_tracker is not None:
+                    _allowed = _resource_tracker.record_tool_call()
+                    if not _allowed:
+                        # DEGRADE mode: tool limit reached — disable the named tool and skip
+                        _degrade = getattr(
+                            getattr(_resource_tracker, "_resource", None), "degrade_policy", None
+                        )
+                        _disabled = getattr(_degrade, "tool_to_disable", None)
+                        if _disabled and _disabled in tools_by_name:
+                            del tools_by_name[_disabled]
+                            tools = [t for t in (tools or []) if t.name != _disabled]
+                        ctx.emit_event(
+                            Hook.RESOURCE_DEGRADED,
+                            EventContext(
+                                reason="tools",
+                                disabled_tool=_disabled,
+                                iteration=iteration,
+                            ),
+                        )
+                        messages.append(
+                            Message(
+                                role=MessageRole.TOOL,
+                                content=f"Tool '{tool_name}' unavailable: tool limit reached.",
+                                tool_call_id=tc.id,
+                            )
+                        )
+                        continue
 
                 tools_used.append(tool_name)
                 tool_calls_all.append(
@@ -622,8 +668,14 @@ class HumanInTheLoop(Loop):
     Args:
         approval_gate: ApprovalGate for async request/approve. Use ApprovalGate(callback=fn).
         approve: Legacy: async (tool_name, args) -> bool. Wrapped into ApprovalGate if set.
-        timeout: Seconds to wait for approval. On timeout, reject. Default 300.
+        timeout: Seconds to wait for approval. On timeout, behaviour controlled by on_timeout. Default 300.
         max_iterations: Max tool-call loops.
+        session: Optional persistent session backend. When provided, each approval request
+            is persisted as an ApprovalSession (SQLite or custom backend). Enables
+            cross-process session resumption and audit trails.
+        on_timeout: What to do when the gate times out. HITLTimeout.REJECT (default) treats
+            timeout as rejection. HITLTimeout.APPROVE auto-approves. HITLTimeout.RAISE raises
+            HITLTimeoutError.
     """
 
     name = "human_in_the_loop"
@@ -634,7 +686,10 @@ class HumanInTheLoop(Loop):
         approve: ToolApprovalFn | None = None,
         timeout: int = 300,
         max_iterations: int = 10,
+        session: object = None,
+        on_timeout: object = None,
     ) -> None:
+        from syrin.enums import HITLTimeout
         from syrin.hitl import ApprovalGate
 
         if approval_gate is not None:
@@ -649,6 +704,16 @@ class HumanInTheLoop(Loop):
             raise ValueError("HumanInTheLoop requires approval_gate or approve")
         self._timeout = timeout
         self.max_iterations = max_iterations
+        self._session = session
+        self._on_timeout: HITLTimeout = on_timeout if on_timeout is not None else HITLTimeout.REJECT  # type: ignore[assignment]
+        if session is not None:
+            from syrin.hitl import ApprovalSessionProtocol  # noqa: PLC0415
+
+            if not isinstance(session, ApprovalSessionProtocol):
+                raise ValueError(
+                    f"session must implement ApprovalSessionProtocol; got {type(session).__name__!r}. "
+                    "Use SQLiteApprovalSession or implement the protocol."
+                )
 
     async def run(  # type: ignore[explicit-any]
         self, ctx: AgentRunContext | Any, user_input: str | list[dict[str, object]]
@@ -679,6 +744,8 @@ class HumanInTheLoop(Loop):
             iteration += 1
             ctx.check_and_apply_rate_limit()
             ctx.pre_call_budget_check(messages, max_output_tokens=ctx.max_output_tokens)  # type: ignore[arg-type]
+            if ctx.has_budget:
+                ctx.check_and_apply_budget()
 
             response = await ctx.complete(messages, tools)
 
@@ -702,6 +769,29 @@ class HumanInTheLoop(Loop):
                 tool_name = tc.name
                 tool_args = tc.arguments or {}
 
+                # Session persistence: create a record before requesting approval
+                session_id: str | None = None
+                if self._session is not None:
+                    try:
+                        self._session.expire_stale()  # type: ignore[attr-defined]
+                    except Exception as _se:
+                        _log.warning("HITL session expire_stale() failed (non-fatal): %s", _se)
+                    session_id = self._session.create(  # type: ignore[attr-defined]
+                        tool_name=tool_name,
+                        arguments=tool_args,
+                        timeout=self._timeout,
+                        message=f"Tool {tool_name!r} requires approval",
+                    )
+                    ctx.emit_event(
+                        Hook.HITL_REQUESTED,
+                        EventContext(
+                            name=tool_name,
+                            arguments=tool_args,
+                            session_id=session_id,
+                            iteration=iteration,
+                        ),
+                    )
+
                 ctx.emit_event(
                     Hook.HITL_PENDING,
                     EventContext(
@@ -711,17 +801,72 @@ class HumanInTheLoop(Loop):
                         iteration=iteration,
                     ),
                 )
+
+                timed_out = False
                 try:
+                    # The gate receives its own timeout for internal use; the outer
+                    # wait_for adds 5s grace so the gate's internal timeout fires first
+                    # (giving a clean rejection result) before the outer one cancels.
                     approved = await asyncio.wait_for(
                         self._gate.request(  # type: ignore[attr-defined]
                             message=f"Tool {tool_name!r} with args: {tool_args}",
                             timeout=self._timeout,
-                            context={"tool_name": tool_name, "arguments": tool_args},
+                            context={
+                                "tool_name": tool_name,
+                                "arguments": tool_args,
+                                "session_id": session_id,
+                            },
                         ),
-                        timeout=self._timeout,
+                        timeout=self._timeout + 5,  # 5s grace beyond gate's own timeout
                     )
-                except TimeoutError:
-                    approved = False
+                except TimeoutError as _te:
+                    timed_out = True
+                    from syrin.enums import ApprovalState, HITLTimeout
+
+                    if self._on_timeout == HITLTimeout.APPROVE:
+                        approved = True
+                    elif self._on_timeout == HITLTimeout.RAISE:
+                        from syrin.hitl.exceptions import HITLTimeoutError
+
+                        if session_id is not None and self._session is not None:
+                            self._session.resolve(session_id, state=ApprovalState.TIMED_OUT)  # type: ignore[attr-defined]
+                        ctx.emit_event(
+                            Hook.HITL_TIMEOUT,
+                            EventContext(
+                                name=tool_name,
+                                session_id=session_id,
+                                iteration=iteration,
+                            ),
+                        )
+                        raise HITLTimeoutError(
+                            session_id=session_id or "",
+                            tool_name=tool_name,
+                            timeout=self._timeout,
+                        ) from _te
+                    else:
+                        # HITLTimeout.REJECT (default)
+                        approved = False
+
+                # Persist final state after gate decision
+                if session_id is not None and self._session is not None:
+                    from syrin.enums import ApprovalState, HITLTimeout
+
+                    if timed_out:
+                        # RAISE was already handled above; only APPROVE/REJECT reach here
+                        self._session.resolve(session_id, state=ApprovalState.TIMED_OUT)  # type: ignore[attr-defined]
+                        ctx.emit_event(
+                            Hook.HITL_TIMEOUT,
+                            EventContext(
+                                name=tool_name,
+                                session_id=session_id,
+                                iteration=iteration,
+                            ),
+                        )
+                    else:
+                        self._session.resolve(  # type: ignore[attr-defined]
+                            session_id,
+                            state=ApprovalState.APPROVED if approved else ApprovalState.REJECTED,
+                        )
 
                 ctx.emit_event(
                     Hook.HITL_APPROVED if approved else Hook.HITL_REJECTED,
@@ -1107,23 +1252,10 @@ class CodeActionLoop(Loop):
     """Generate code → Execute → Interpret results loop.
 
     The LLM generates Python code to solve the problem; the code runs
-    in the **current Python process** using ``exec()``; the output is
-    fed back to the LLM for interpretation.
+    and the output is fed back to the LLM for interpretation.
 
-    .. warning:: **In-Process Execution — No Sandbox**
-
-        Code generated by the LLM runs directly inside the calling Python
-        process with the same permissions, file-system access, and memory
-        as your application.  There is **no isolation, no container, and no
-        resource limit** beyond the ``timeout_seconds`` parameter.
-
-        Do NOT use ``CodeActionLoop`` with untrusted user-provided inputs in
-        a production environment.  A full sandboxed execution backend is
-        planned for a future release.  Until then, use this loop only for:
-
-        - Internal tooling where you control the input.
-        - Trusted, developer-written tasks (data analysis, computations).
-        - Offline notebooks and experimentation.
+    Pass ``sandbox=Sandbox()`` for production use. Without a sandbox, code
+    runs in-process via ``exec()`` with limited built-in restriction.
 
     Use for:
         - Mathematical computations and numerical analysis.
@@ -1133,16 +1265,24 @@ class CodeActionLoop(Loop):
     Attributes:
         max_iterations: Maximum LLM → execute → interpret cycles (default 10).
         timeout_seconds: Wall-clock seconds allowed per code execution block.
-            Applies to the ``exec()`` call; does not limit the total loop
+            Applies to the execution call; does not limit the total loop
             duration.  Defaults to 60.
+        sandbox: Optional :class:`~syrin.sandbox.Sandbox` instance for
+            isolated subprocess execution.  ``None`` falls back to in-process
+            ``exec()``.
 
     Example::
 
         from syrin import Agent, Model, CodeActionLoop
+        from syrin.sandbox import Sandbox
 
         class MathAgent(Agent):
             model = Model.OpenAI("gpt-4o-mini")
-            loop = CodeActionLoop(max_iterations=5, timeout_seconds=30)
+            loop = CodeActionLoop(
+                max_iterations=5,
+                timeout_seconds=30,
+                sandbox=Sandbox(),
+            )
 
         agent = MathAgent()
         result = agent.run("Calculate the first 10 prime numbers and their sum")
@@ -1155,17 +1295,22 @@ class CodeActionLoop(Loop):
         self,
         max_iterations: int = 10,
         timeout_seconds: int = 60,
+        sandbox: Sandbox | None = None,
     ) -> None:
         """Initialise CodeActionLoop.
 
         Args:
             max_iterations: Maximum LLM → execute → interpret cycles before
                 stopping.  Defaults to 10.
-            timeout_seconds: Maximum seconds to allow a single ``exec()``
+            timeout_seconds: Maximum seconds to allow a single code execution
                 block to run.  Defaults to 60.
+            sandbox: Optional :class:`~syrin.sandbox.Sandbox` for isolated
+                subprocess execution.  When ``None``, code runs in-process
+                via ``exec()`` (only suitable for trusted/internal inputs).
         """
         self.max_iterations = max_iterations
         self.timeout_seconds = timeout_seconds
+        self.sandbox = sandbox
 
     async def run(  # type: ignore[explicit-any]
         self, ctx: AgentRunContext | Any, user_input: str | list[dict[str, object]]
@@ -1245,93 +1390,52 @@ class CodeActionLoop(Loop):
             if code_blocks:
                 code = code_blocks[0].strip()
 
-                try:
-                    import builtins
-                    import io
-                    from contextlib import redirect_stdout
+                if self.sandbox is not None:
+                    # Sandboxed execution path — isolated subprocess
+                    from syrin.sandbox.exceptions import (  # noqa: PLC0415
+                        SandboxTimeoutError as _SandboxTimeoutError,
+                    )
 
-                    # Restrict execution to a safe subset of builtins.
-                    # __builtins__ is set explicitly to block __import__, eval,
-                    # exec, open, compile, and other dangerous callables.
-                    # Only pure-computation builtins are exposed.
-                    _SAFE_BUILTINS: dict[str, object] = {
-                        name: getattr(builtins, name)
-                        for name in (
-                            "abs",
-                            "all",
-                            "any",
-                            "ascii",
-                            "bin",
-                            "bool",
-                            "bytes",
-                            "chr",
-                            "dict",
-                            "divmod",
-                            "enumerate",
-                            "filter",
-                            "float",
-                            "format",
-                            "frozenset",
-                            "getattr",
-                            "hasattr",
-                            "hash",
-                            "hex",
-                            "int",
-                            "isinstance",
-                            "issubclass",
-                            "iter",
-                            "len",
-                            "list",
-                            "map",
-                            "max",
-                            "min",
-                            "next",
-                            "oct",
-                            "ord",
-                            "pow",
-                            "print",
-                            "range",
-                            "repr",
-                            "reversed",
-                            "round",
-                            "set",
-                            "slice",
-                            "sorted",
-                            "str",
-                            "sum",
-                            "tuple",
-                            "type",
-                            "zip",
-                            "True",
-                            "False",
-                            "None",
-                            "ArithmeticError",
-                            "AssertionError",
-                            "AttributeError",
-                            "EOFError",
-                            "Exception",
-                            "IndexError",
-                            "KeyError",
-                            "NameError",
-                            "NotImplementedError",
-                            "OSError",
-                            "OverflowError",
-                            "RuntimeError",
-                            "StopIteration",
-                            "TypeError",
-                            "ValueError",
-                            "ZeroDivisionError",
-                        )
-                        if hasattr(builtins, name)
-                    }
-
-                    output_buffer = io.StringIO()
+                    ctx.emit_event(
+                        Hook.SANDBOX_EXEC_START,
+                        EventContext(code=code[:500], iteration=iteration),
+                    )
                     try:
-                        with redirect_stdout(output_buffer):
-                            exec(code, {"__builtins__": _SAFE_BUILTINS}, {})  # nosec B102
-                        code_output = output_buffer.getvalue()
-                    except Exception as e:
-                        code_output = f"Error: {str(e)}"
+                        exec_result = await self.sandbox.exec_python(
+                            code, timeout=float(self.timeout_seconds)
+                        )
+                        if exec_result.exit_code != 0:
+                            code_output = exec_result.stdout + (
+                                "\n" + exec_result.stderr if exec_result.stderr else ""
+                            )
+                        else:
+                            code_output = exec_result.stdout
+                        ctx.emit_event(
+                            Hook.SANDBOX_EXEC_END,
+                            EventContext(
+                                exit_code=exec_result.exit_code,
+                                duration_ms=getattr(exec_result, "duration_ms", 0.0),
+                                output=code_output[:200],
+                                iteration=iteration,
+                            ),
+                        )
+                    except _SandboxTimeoutError as e:
+                        code_output = f"Error: {e}"
+                        ctx.emit_event(
+                            Hook.SANDBOX_EXEC_END,
+                            EventContext(
+                                exit_code=-1,
+                                duration_ms=float(self.timeout_seconds) * 1000,
+                                error=str(e),
+                                iteration=iteration,
+                            ),
+                        )
+                    except Exception as e:  # noqa: BLE001
+                        code_output = f"Error: {e}"
+                        ctx.emit_event(
+                            Hook.SANDBOX_EXEC_END,
+                            EventContext(exit_code=-1, error=str(e), iteration=iteration),
+                        )
 
                     messages.append(
                         Message(
@@ -1339,13 +1443,109 @@ class CodeActionLoop(Loop):
                             content=f"Code output:\n```{code_output}```\n\nPlease provide your final answer based on this output.",
                         )
                     )
-                except Exception as e:
-                    messages.append(
-                        Message(
-                            role=MessageRole.USER,
-                            content=f"Code execution error: {str(e)}. Please fix and try again.",
+                else:
+                    # In-process fallback — original exec() path (trusted/internal inputs only)
+                    try:
+                        import builtins  # noqa: PLC0415
+                        import io  # noqa: PLC0415
+                        from contextlib import redirect_stdout  # noqa: PLC0415
+
+                        # Restrict execution to a safe subset of builtins.
+                        # __builtins__ is set explicitly to block __import__, eval,
+                        # exec, open, compile, and other dangerous callables.
+                        # Only pure-computation builtins are exposed.
+                        _SAFE_BUILTINS: dict[str, object] = {
+                            name: getattr(builtins, name)
+                            for name in (
+                                "abs",
+                                "all",
+                                "any",
+                                "ascii",
+                                "bin",
+                                "bool",
+                                "bytes",
+                                "chr",
+                                "dict",
+                                "divmod",
+                                "enumerate",
+                                "filter",
+                                "float",
+                                "format",
+                                "frozenset",
+                                "getattr",
+                                "hasattr",
+                                "hash",
+                                "hex",
+                                "int",
+                                "isinstance",
+                                "issubclass",
+                                "iter",
+                                "len",
+                                "list",
+                                "map",
+                                "max",
+                                "min",
+                                "next",
+                                "oct",
+                                "ord",
+                                "pow",
+                                "print",
+                                "range",
+                                "repr",
+                                "reversed",
+                                "round",
+                                "set",
+                                "slice",
+                                "sorted",
+                                "str",
+                                "sum",
+                                "tuple",
+                                "type",
+                                "zip",
+                                "True",
+                                "False",
+                                "None",
+                                "ArithmeticError",
+                                "AssertionError",
+                                "AttributeError",
+                                "EOFError",
+                                "Exception",
+                                "IndexError",
+                                "KeyError",
+                                "NameError",
+                                "NotImplementedError",
+                                "OSError",
+                                "OverflowError",
+                                "RuntimeError",
+                                "StopIteration",
+                                "TypeError",
+                                "ValueError",
+                                "ZeroDivisionError",
+                            )
+                            if hasattr(builtins, name)
+                        }
+
+                        output_buffer = io.StringIO()
+                        try:
+                            with redirect_stdout(output_buffer):
+                                exec(code, {"__builtins__": _SAFE_BUILTINS}, {})  # nosec B102
+                            code_output = output_buffer.getvalue()
+                        except Exception as e:
+                            code_output = f"Error: {str(e)}"
+
+                        messages.append(
+                            Message(
+                                role=MessageRole.USER,
+                                content=f"Code output:\n```{code_output}```\n\nPlease provide your final answer based on this output.",
+                            )
                         )
-                    )
+                    except Exception as e:
+                        messages.append(
+                            Message(
+                                role=MessageRole.USER,
+                                content=f"Code execution error: {str(e)}. Please fix and try again.",
+                            )
+                        )
             else:
                 break
 

@@ -62,11 +62,18 @@ class BudgetPool:
         # Remaining = total - sum(allocations)
         self._allocated_total: float = 0.0
         self._entries: dict[str, _AgentEntry] = {}
-        self._lock: asyncio.Lock = asyncio.Lock()
+        self.__lock: asyncio.Lock | None = None
 
     # ──────────────────────────────────────────────────────────────────────────
     # Properties
     # ──────────────────────────────────────────────────────────────────────────
+
+    @property
+    def _lock(self) -> asyncio.Lock:
+        """Lazily create the asyncio.Lock on first use inside an event loop."""
+        if self.__lock is None:
+            self.__lock = asyncio.Lock()
+        return self.__lock
 
     @property
     def total(self) -> float:

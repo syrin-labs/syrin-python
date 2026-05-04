@@ -39,19 +39,21 @@ class Servable:
         stdout: object = None,
         **config_kwargs: object,
     ) -> None:
-        """Serve this agent or pipeline via HTTP, CLI, or STDIO. Blocks until stopped.
+        """Serve this agent or pipeline via HTTP, CLI, STDIO, or as an MCP server.
 
-        Starts a server (HTTP) or REPL (CLI) based on the selected protocol.
+        Starts a server (HTTP/MCP) or REPL (CLI) based on serve_as and protocol.
         For HTTP: visit the returned URL for /chat, /stream, or /playground.
+        For MCP: the agent is exposed as an MCP tool callable from Claude Code,
+        Claude Desktop, Cursor, Dify, n8n, and any MCP-compatible host.
 
         Args:
             config: Optional ServeConfig instance. If None, uses config_kwargs to build one.
-                Pass ``ServeConfig(protocol=ServeProtocol.HTTP, port=8000)`` for full control.
-            stdin: Input stream for STDIO protocol only. Used when protocol is STDIO.
-                Default: sys.stdin. Override for testing or embedding.
-            stdout: Output stream for STDIO protocol only. Used when protocol is STDIO.
-                Default: sys.stdout. Override for testing or embedding.
+                Pass ``ServeConfig(serve_as=ServeAs.MCP, protocol=ServeProtocol.STDIO)``
+                for full control.
+            stdin: Input stream for STDIO protocol only. Default: sys.stdin.
+            stdout: Output stream for STDIO protocol only. Default: sys.stdout.
             **config_kwargs: Override any ServeConfig field. Common options:
+                - serve_as: ServeAs — AGENT (default) or MCP.
                 - protocol: ServeProtocol — HTTP (default), CLI, or STDIO.
                 - host: str — Bind address for HTTP (default "0.0.0.0").
                 - port: int — HTTP port (default 8000).
@@ -68,11 +70,26 @@ class Servable:
             >>> agent.serve(port=8000, enable_playground=True, debug=True)
             >>> agent.serve(protocol=ServeProtocol.CLI)
             >>> agent.serve(protocol=ServeProtocol.STDIO, stdin=stream_in, stdout=stream_out)
+            >>> agent.serve(serve_as=ServeAs.MCP)                          # MCP over STDIO
+            >>> agent.serve(serve_as=ServeAs.MCP, protocol=ServeProtocol.HTTP, port=8080)
         """
-        from syrin.enums import ServeProtocol
+        from syrin.enums import ServeAs, ServeProtocol
         from syrin.serve.config import ServeConfig
 
         cfg = config if isinstance(config, ServeConfig) else ServeConfig(**config_kwargs)  # type: ignore[arg-type]
+
+        if cfg.serve_as == ServeAs.MCP:
+            from syrin.mcp.server import SyrinMCPServer
+
+            mcp = SyrinMCPServer(cast(_ServableUnion, self))
+            mcp.serve(
+                protocol=cfg.protocol,
+                host=cfg.host,
+                port=cfg.port,
+                stdin=stdin,
+                stdout=stdout,
+            )
+            return
 
         if cfg.protocol == ServeProtocol.HTTP:
             try:

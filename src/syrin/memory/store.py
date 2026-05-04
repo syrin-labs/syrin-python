@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import itertools
 import logging
+import re
 import threading
 import uuid
 from collections.abc import Callable, Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from syrin.budget import BudgetExceededContext
 from syrin.enums import BudgetLimitType, DecayStrategy, MemoryScope, MemoryType
@@ -33,6 +34,7 @@ class MemoryStore:
         budget_on_exceeded: Callable[[BudgetExceededContext], None] | None = None,
         events: object = None,
         backend: dict[str, MemoryEntry] | None = None,
+        hook_emit: Callable[[str, dict[str, object]], None] | None = None,
     ) -> None:
         self._decay = decay or Decay(
             strategy=DecayStrategy.EXPONENTIAL,
@@ -44,6 +46,7 @@ class MemoryStore:
         self._budget_consolidation = budget_consolidation
         self._budget_on_exceeded = budget_on_exceeded
         self._events = events
+        self._hook_emit = hook_emit
         self._backend: dict[str, MemoryEntry] = backend or {}
         self._memory_counter: itertools.count[int] = itertools.count(1)
         self._decay_lock = threading.Lock()
@@ -51,6 +54,22 @@ class MemoryStore:
     def _generate_id(self) -> str:
         """Generate a unique memory ID."""
         return f"mem-{uuid.uuid4().hex[:8]}-{next(self._memory_counter)}"
+
+    def _parse_duration(self, duration_str: str) -> timedelta | None:
+        """Parse a duration string like '7d', '2h', '30m' into a timedelta."""
+        if not duration_str:
+            return None
+        match = re.match(r"^(\d+)([dhm])$", duration_str.strip())
+        if not match:
+            return None
+        value, unit = int(match.group(1)), match.group(2)
+        if unit == "d":
+            return timedelta(days=value)
+        elif unit == "h":
+            return timedelta(hours=value)
+        elif unit == "m":
+            return timedelta(minutes=value)
+        return None
 
     def _emit_event(self, event_name: str, data: dict[str, object]) -> None:
         """Emit an event if events system is available."""
@@ -313,51 +332,89 @@ class MemoryStore:
         *,
         deduplicate: bool = True,
         consolidation_budget: float | None = None,
+        compress_after: str | None = None,
     ) -> int:
-        """Deduplicate memories (exact content match), optionally budget-aware.
+        """Consolidate memories: deduplicate, optionally compress old entries, budget-aware.
 
         Merges duplicates by keeping one entry per unique content (highest importance).
-        Emits MEMORY_CONSOLIDATE hook with count of removed duplicates.
+        When compress_after is set, entries older than the threshold are compressed into one.
+        Emits MEMORY_CONSOLIDATE hook with count of removed/compressed entries.
 
         Args:
             deduplicate: If True, remove duplicate contents (keep one per content).
-            consolidation_budget: If set, skip consolidation when estimated cost would exceed.
+            consolidation_budget: If set, checks whether budget allows consolidation.
+            compress_after: Age threshold (e.g. '7d', '2h'); entries older are compressed.
 
         Returns:
-            Number of duplicate entries removed.
+            Number of entries removed (via dedup or compression).
         """
         span_data = self._create_span("consolidate")
-        if not deduplicate:
-            self._end_span(span_data, consolidated=0)
-            return 0
+        removed = 0
 
         if consolidation_budget is None and self._budget_consolidation is not None:
             consolidation_budget = self._budget_consolidation
 
-        # Simple dedupe: group by content, keep one (max importance), delete rest
-        by_content: dict[str, list[tuple[str, MemoryEntry]]] = {}
-        for key, entry in self._backend.items():
-            c = (entry.content or "").strip()
-            if c not in by_content:
-                by_content[c] = []
-            by_content[c].append((key, entry))
+        if consolidation_budget is not None and consolidation_budget <= 0:
+            self._end_span(span_data, consolidated=0)
+            return 0
 
-        removed = 0
-        for _content, key_entries in by_content.items():
-            if len(key_entries) <= 1:
-                continue
-            # Keep the one with highest importance; remove others
-            key_entries.sort(key=lambda ke: ke[1].importance, reverse=True)
-            for key, _entry in key_entries[1:]:
-                del self._backend[key]
-                removed += 1
+        threshold_td = self._parse_duration(compress_after) if compress_after else None
+        threshold_time = (datetime.now() - threshold_td) if threshold_td else None
+
+        if deduplicate:
+            by_content: dict[str, list[tuple[str, MemoryEntry]]] = {}
+            for key, entry in self._backend.items():
+                c = (entry.content or "").strip()
+                if c not in by_content:
+                    by_content[c] = []
+                by_content[c].append((key, entry))
+
+            for _content, key_entries in by_content.items():
+                if len(key_entries) <= 1:
+                    continue
+                key_entries.sort(key=lambda ke: ke[1].importance, reverse=True)
+                for key, _entry in key_entries[1:]:
+                    del self._backend[key]
+                    removed += 1
+
+        if threshold_time is not None:
+            old_ids: list[tuple[str, MemoryEntry]] = []
+            for key, entry in list(self._backend.items()):
+                if entry.created_at < threshold_time:
+                    old_ids.append((key, entry))
+
+            if len(old_ids) > 1:
+                old_ids.sort(key=lambda ke: ke[1].importance, reverse=True)
+                for key, _entry in old_ids[1:]:
+                    del self._backend[key]
+                    removed += 1
 
         self._emit_event(
             "memory.consolidate",
             {"memories_consolidated": removed},
         )
+        if self._hook_emit is not None:
+            self._hook_emit(
+                "memory.consolidate",
+                {"memories_consolidated": removed},
+            )
         self._end_span(span_data, consolidated=removed)
         return removed
+
+    def _emit_extract_hook(self, turn_content: str) -> None:
+        """Emit MEMORY_EXTRACT hook. Fires at the auto-extraction entry point so logging and tracing tools can observe when extraction would occur.
+
+        Args:
+            turn_content: The conversation turn content that would be extracted from.
+        """
+        self._emit_event(
+            "memory.extract", {"content_length": len(turn_content), "implemented": False}
+        )
+        if self._hook_emit is not None:
+            self._hook_emit(
+                "memory.extract",
+                {"content_length": len(turn_content), "implemented": False},
+            )
 
     def list(
         self,

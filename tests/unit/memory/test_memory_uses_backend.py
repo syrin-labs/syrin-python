@@ -35,7 +35,7 @@ class TestMemoryUsesSQLiteBackend:
             write_mode=WriteMode.SYNC,
         )
         mem.remember("Fact stored in SQLite", memory_type=MemoryType.FACTS, importance=0.9)
-        results = mem.recall(query="SQLite", count=10)
+        results = mem.recall(query="SQLite", limit=10)
         assert len(results) >= 1
         assert any("Fact stored in SQLite" in e.content for e in results)
 
@@ -47,14 +47,14 @@ class TestMemoryUsesSQLiteBackend:
             write_mode=WriteMode.SYNC,
         )
         mem1.remember("Cross-instance persistence", memory_type=MemoryType.HISTORY)
-        mem1.recall(count=5)  # Ensure written
+        mem1.recall(limit=5)  # Ensure written
 
         mem2 = Memory(
             backend=MemoryBackend.SQLITE,
             path=temp_db,
             write_mode=WriteMode.SYNC,
         )
-        results = mem2.recall(query="Cross-instance", count=10)
+        results = mem2.recall(query="Cross-instance", limit=10)
         assert len(results) >= 1
         assert any("Cross-instance persistence" in e.content for e in results)
 
@@ -66,11 +66,11 @@ class TestMemoryUsesSQLiteBackend:
             write_mode=WriteMode.SYNC,
         )
         mem.remember("To be forgotten", memory_type=MemoryType.HISTORY)
-        entries_before = mem.recall(query="forgotten", count=10)
+        entries_before = mem.recall(query="forgotten", limit=10)
         assert len(entries_before) >= 1
 
         mem.forget(query="forgotten")
-        entries_after = mem.recall(query="forgotten", count=10)
+        entries_after = mem.recall(query="forgotten", limit=10)
         assert len(entries_after) == 0
 
     def test_entries_uses_sqlite(self, temp_db: str) -> None:
@@ -99,7 +99,7 @@ class TestMemoryUsesInMemoryBackend:
             write_mode=WriteMode.SYNC,
         )
         mem.remember("In-memory fact", memory_type=MemoryType.FACTS)
-        results = mem.recall(query="In-memory", count=10)
+        results = mem.recall(query="In-memory", limit=10)
         assert len(results) >= 1
 
     def test_in_memory_not_persistent(self) -> None:
@@ -110,7 +110,7 @@ class TestMemoryUsesInMemoryBackend:
         )
         mem1.remember("Ephemeral", memory_type=MemoryType.HISTORY)
         mem2 = Memory(backend=MemoryBackend.MEMORY)
-        results = mem2.recall(count=10)
+        results = mem2.recall(limit=10)
         assert len(results) == 0  # Different instance, different store
 
     def test_consolidate_with_memory_backend(self) -> None:
@@ -123,7 +123,7 @@ class TestMemoryUsesInMemoryBackend:
         mem.remember("dupe", memory_type=MemoryType.HISTORY)
         removed = mem.consolidate()
         assert removed == 1
-        recalled = mem.recall(count=10)
+        recalled = mem.recall(limit=10)
         assert len(recalled) == 1
 
 
@@ -146,7 +146,7 @@ class TestMemoryBackendEdgeCases:
             write_mode=WriteMode.SYNC,
         )
         mem.remember("Default path test", memory_type=MemoryType.FACTS)
-        results = mem.recall(count=5)
+        results = mem.recall(limit=5)
         assert len(results) >= 1
 
     def test_recall_empty_query_lists_up_to_count(self, temp_db: str) -> None:
@@ -158,7 +158,7 @@ class TestMemoryBackendEdgeCases:
         )
         mem.remember("A", memory_type=MemoryType.HISTORY)
         mem.remember("B", memory_type=MemoryType.HISTORY)
-        results = mem.recall(query="", count=5)
+        results = mem.recall(query="", limit=5)
         assert len(results) >= 1
         assert len(results) <= 5
 
@@ -170,12 +170,12 @@ class TestMemoryBackendEdgeCases:
             write_mode=WriteMode.SYNC,
         )
         mem.remember("Unique content XZY", memory_type=MemoryType.FACTS)
-        entries = mem.recall(query="XZY", count=10)
+        entries = mem.recall(query="XZY", limit=10)
         assert len(entries) >= 1
         mid = entries[0].id
         deleted = mem.forget(memory_id=mid)
         assert deleted == 1
-        after = mem.recall(query="XZY", count=10)
+        after = mem.recall(query="XZY", limit=10)
         assert len(after) == 0
 
     def test_remember_returns_bool(self) -> None:

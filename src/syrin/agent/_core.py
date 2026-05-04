@@ -224,6 +224,12 @@ class _AgentMeta(type):
         # __init_subclass__ merges from both "tools" and "_syrin_class_tools".
         if "tools" in namespace and not hasattr(namespace["tools"], "__get__"):
             namespace["_syrin_class_tools"] = namespace.pop("tools")
+        # Move "spawn" (Spawn instance) to _syrin_spawn_config to avoid shadowing Agent.spawn method.
+        # Move "agents" (list) to _syrin_agents to be explicit about class-level sub-agent list.
+        if "spawn" in namespace and not hasattr(namespace["spawn"], "__get__"):
+            namespace["_syrin_spawn_config"] = namespace.pop("spawn")
+        if "agents" in namespace and not hasattr(namespace["agents"], "__get__"):
+            namespace["_syrin_agents"] = namespace.pop("agents")
         return super().__new__(mcs, name, bases, namespace, **kwargs)
 
 
@@ -446,6 +452,8 @@ class Agent(Watchable, Servable, metaclass=_AgentMeta):
     _checkpoint_config: CheckpointConfig | None
     _checkpointer: Checkpointer | None
     events: Events
+    _resource: object | None  # Resource | None
+    _resource_tracker: object | None  # ResourceTracker | None
 
     # Section key -> attr or path for RemoteConfigurable; None = self (agent section)
     REMOTE_CONFIG_SECTIONS: ClassVar[dict[str, str | tuple[str, ...] | None]] = {
@@ -844,6 +852,9 @@ class Agent(Watchable, Servable, metaclass=_AgentMeta):
         voice_generation: object = None,
         knowledge: object | None = None,
         output_config: object | None = None,  # OutputFormat | OutputConfig | None
+        resource: object | None = NOT_PROVIDED,  # Resource | None
+        agents: list[type[object]] | None = None,
+        spawn: object | None = None,  # Spawn | None
         pry: bool = False,
     ) -> None:
         """Create an agent with model, prompt, tools, and optional config.
@@ -990,6 +1001,9 @@ class Agent(Watchable, Servable, metaclass=_AgentMeta):
             voice_generation=voice_generation,
             knowledge=knowledge,
             output_config=output_config,
+            resource=resource,
+            agents=agents,
+            spawn=spawn,
         )
         self._pry: bool = pry
 
@@ -2367,7 +2381,35 @@ class Agent(Watchable, Servable, metaclass=_AgentMeta):
         """Run using the configured loop strategy with full observability (async)."""
         from syrin.agent._run import run_agent_loop_async
 
-        result = await run_agent_loop_async(self, user_input)
+        # Start resource tracker timing (if resource is configured)
+        resource_tracker = getattr(self, "_resource_tracker", None)
+        if resource_tracker is not None:
+            resource_tracker.start()
+
+        resource = getattr(self, "_resource", None)
+        timeout = getattr(resource, "timeout", None) if resource is not None else None
+
+        if timeout is not None:
+            try:
+                result = await asyncio.wait_for(
+                    run_agent_loop_async(self, user_input), timeout=timeout
+                )
+            except TimeoutError as exc:
+                from syrin.exceptions import ResourceTimeoutError  # noqa: PLC0415
+
+                elapsed = (
+                    resource_tracker.state(steps=0, context_tokens=0).timeout_elapsed
+                    if resource_tracker is not None
+                    else timeout
+                )
+                raise ResourceTimeoutError(
+                    f"Agent run exceeded timeout of {timeout}s (elapsed: {elapsed:.2f}s).",
+                    timeout=timeout,
+                    elapsed=elapsed,
+                ) from exc
+        else:
+            result = await run_agent_loop_async(self, user_input)
+
         # Do NOT record conversation turn when guardrail blocked the call.
         # Agent state (messages, cost) must be identical before and after a blocked call.
         from syrin.enums import StopReason as _StopReason
@@ -2612,6 +2654,49 @@ class Agent(Watchable, Servable, metaclass=_AgentMeta):
             self._call_inject_source_detail = None
             self._call_task_override = None
 
+    async def arun_events(
+        self,
+        user_input: str | list[dict[str, object]],
+        **run_kwargs: object,
+    ) -> AsyncIterator[object]:
+        """Stream structured :class:`~syrin.agent._run_events.AgentEvent` objects.
+
+        An async generator that yields typed events for each significant moment
+        in the agent run: start, end, tool calls, budget updates, and errors.
+        Use this when you need to react to *what is happening* inside a run,
+        rather than consuming raw text tokens (:meth:`astream`).
+
+        Unlike :meth:`astream`, this method completes the full agentic loop
+        (tool calls, guardrails, multi-step) before yielding ``RUN_END``.
+
+        Args:
+            user_input: User message or list of message dicts.
+            **run_kwargs: Forwarded to :meth:`arun` (e.g. ``context``,
+                ``template_variables``).
+
+        Yields:
+            :class:`~syrin.agent._run_events.AgentEvent` objects in emission order.
+            First event is always :attr:`~syrin.agent._run_events.AgentEventType.RUN_START`;
+            last is :attr:`~syrin.agent._run_events.AgentEventType.RUN_END` (or
+            :attr:`~syrin.agent._run_events.AgentEventType.ERROR` on failure).
+
+        Raises:
+            Any exception raised by :meth:`arun` — an ERROR event is emitted
+            before the exception propagates.
+
+        Example::
+
+            async for event in agent.arun_events("research AI trends"):
+                if event.type == "tool_call":
+                    print(f"→ {event.data['name']}")
+                elif event.type == "run_end":
+                    print(event.data["content"])
+        """
+        from syrin.agent._run_events import _run_events_impl  # noqa: PLC0415
+
+        async for event in _run_events_impl(self, user_input, **run_kwargs):
+            yield event
+
     def stream(
         self,
         user_input: str | list[dict[str, object]],
@@ -2644,6 +2729,16 @@ class Agent(Watchable, Servable, metaclass=_AgentMeta):
             ...     print(chunk.text, end="")
         """
         _validate_user_input(user_input, "stream", self._max_input_length)
+        if self._tools:
+            import warnings as _warnings
+
+            _warnings.warn(
+                "Agent has tools configured. stream() does not execute tool calls — "
+                "the LLM may emit tool-call tokens that are streamed as raw text. "
+                "Use run() or arun() when tool execution is needed.",
+                UserWarning,
+                stacklevel=2,
+            )
         self._call_context = context
         self._call_template_vars = dict(template_variables) if template_variables else None
         self._call_inject = inject

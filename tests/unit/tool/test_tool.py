@@ -325,8 +325,14 @@ def test_tool_examples_stored_on_spec() -> None:
 def test_tool_depends_on_stored_on_spec() -> None:
     """@tool(depends_on=[...]) stores depends_on on ToolSpec."""
 
-    @tool(depends_on=["read_file"])
+    @tool
+    def read_file(path: str) -> str:
+        """Read a file."""
+        return ""
+
+    @tool(depends_on=[read_file])
     def write_file(path: str, content: str) -> str:
+        """Write a file."""
         return "ok"
 
     assert write_file.depends_on == ["read_file"]
@@ -350,8 +356,19 @@ def test_tool_depends_on_appears_in_toon_description() -> None:
     """depends_on is injected into the TOON-format description."""
     from syrin.enums import DocFormat
 
-    @tool(depends_on=["open_file", "read_file"])
+    @tool
+    def open_file(path: str) -> str:
+        """Open a file."""
+        return ""
+
+    @tool
+    def read_file(path: str) -> str:
+        """Read a file."""
+        return ""
+
+    @tool(depends_on=[open_file, read_file])
     def close_file(handle: str) -> str:
+        """Close a file."""
         return "closed"
 
     schema = close_file.to_format(DocFormat.TOON)

@@ -7,8 +7,6 @@ import tempfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-import pytest
-
 from syrin.budget._history import FileBudgetStore
 
 # ---------------------------------------------------------------------------
@@ -100,7 +98,7 @@ def test_p99_with_many_samples() -> None:
 
 
 # ---------------------------------------------------------------------------
-# mean / avg_cost alias
+# mean
 # ---------------------------------------------------------------------------
 
 
@@ -108,20 +106,6 @@ def test_mean_field_correct() -> None:
     store, _ = _make_store_with_records([0.10, 0.20, 0.30])
     stats = store.stats("TestAgent")
     assert abs(stats.mean - 0.20) < 1e-10
-
-
-def test_avg_cost_alias_matches_mean() -> None:
-    store, _ = _make_store_with_records([0.10, 0.40])
-    stats = store.stats("TestAgent")
-    assert stats.avg_cost == stats.mean
-
-
-def test_avg_cost_alias_deprecation_warning() -> None:
-    """avg_cost should issue a DeprecationWarning."""
-    store, _ = _make_store_with_records([0.10])
-    stats = store.stats("TestAgent")
-    with pytest.warns(DeprecationWarning):
-        _ = stats.avg_cost
 
 
 # ---------------------------------------------------------------------------

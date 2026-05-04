@@ -1,4 +1,4 @@
-"""Phase 8 security and bug fix tests — written FIRST (TDD red phase)."""
+"""Tests for security hardening: injection guardrail thread safety, event scrubbing, remote config access control."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from syrin.remote._field import RemoteConfigAccess, RemoteField
 from syrin.security.delimiter import DelimiterFactory
 
 # ---------------------------------------------------------------------------
-# BUG-03: PromptInjectionGuardrail pattern cache thread-safety
+# PromptInjectionGuardrail pattern cache thread-safety
 # ---------------------------------------------------------------------------
 
 
@@ -42,24 +42,17 @@ def test_injection_guardrail_pattern_cache_thread_safe() -> None:
     assert not errors, f"Thread errors: {errors}"
 
 
-# ---------------------------------------------------------------------------
-# SEC-01: CanaryTokens per-session — already tested in test_sec_fixes.py
-# Verify the guardrail generates per-session canaries (not global cache)
-# ---------------------------------------------------------------------------
-
-
 def test_injection_guardrail_canary_unique_per_instance() -> None:
     """Two PromptInjectionGuardrail instances have different canary sets."""
     g1 = PromptInjectionGuardrail(canary_count=3)
     g2 = PromptInjectionGuardrail(canary_count=3)
     canaries1 = set(g1.get_canary_tokens())
     canaries2 = set(g2.get_canary_tokens())
-    # They should be independent sets, not sharing the same global tokens
     assert canaries1 != canaries2
 
 
 # ---------------------------------------------------------------------------
-# SEC-04: DelimiterFactory — two calls return different values
+# DelimiterFactory — two calls return different values
 # ---------------------------------------------------------------------------
 
 
@@ -73,7 +66,7 @@ def test_delimiter_factory_returns_different_values() -> None:
 
 
 # ---------------------------------------------------------------------------
-# SEC-06: EventContext.scrub() checks VALUES for API key patterns
+# EventContext.scrub() checks VALUES for API key patterns
 # ---------------------------------------------------------------------------
 
 
@@ -116,14 +109,13 @@ def test_scrub_still_redacts_secret_named_fields() -> None:
 
 
 # ---------------------------------------------------------------------------
-# SEC-07: RemoteConfigAccess default-deny for unknown fields
+# RemoteConfigAccess default-deny for unknown fields
 # ---------------------------------------------------------------------------
 
 
 def test_remote_config_access_default_deny_unknown_path() -> None:
     """RemoteConfigAccess with allow list rejects completely unknown paths."""
     access = RemoteConfigAccess(allow=[RemoteField.MODEL])
-    # "unknown.field" doesn't match any RemoteField prefix
     assert access.is_allowed("unknown.field") is False
 
 

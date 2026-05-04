@@ -53,8 +53,15 @@ class SqliteBusBackend:
                 non-persistent).  Pass a real path for cross-instance persistence.
         """
         self._path = str(path)
-        self._lock: asyncio.Lock = asyncio.Lock()
+        self.__lock: asyncio.Lock | None = None
         self._init_db()
+
+    @property
+    def _lock(self) -> asyncio.Lock:
+        """Lazily create the asyncio.Lock on first use inside an event loop."""
+        if self.__lock is None:
+            self.__lock = asyncio.Lock()
+        return self.__lock
 
     def _init_db(self) -> None:
         """Create the table if it does not already exist."""

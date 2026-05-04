@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, cast
@@ -99,14 +100,14 @@ class MiddleOutTruncator(Compactor):
             else:
                 non_system.append(msg)
 
-        kept_messages = [msg for msg in non_system if msg.get("role") == "system"]
-        non_system = [msg for msg in non_system if msg.get("role") != "system"]
-
+        # System message is always preserved outside the head/tail budget.
+        kept_messages: list[dict[str, object]] = []
         if system_msg:
             kept_messages.append(system_msg)
 
+        # Keep first and last thirds; the middle third is structurally dropped.
         head_size = len(non_system) // 3
-        tail_size = len(non_system) - head_size
+        tail_size = len(non_system) // 3
 
         head = non_system[:head_size] if head_size > 0 else []
         tail = non_system[-tail_size:] if tail_size > 0 else []
@@ -154,6 +155,7 @@ class Summarizer:
         system_prompt: str | None = None,
         user_prompt_template: str | None = None,
         model: Model | None = None,
+        cost_callback: Callable[[float], None] | None = None,
     ) -> None:
         """Initialize the summarizer.
 
@@ -161,6 +163,7 @@ class Summarizer:
             system_prompt: System prompt for the summarization LLM. None = use default from prompts.py.
             user_prompt_template: User prompt template; must contain {messages}. None = default.
             model: Model to use for summarization. None = placeholder (keep system + last 4, no LLM).
+            cost_callback: Optional callback to record LLM cost (USD) when model call succeeds.
         """
         self._system_prompt = (
             system_prompt if system_prompt is not None else DEFAULT_COMPACTION_SYSTEM_PROMPT
@@ -171,6 +174,17 @@ class Summarizer:
             else DEFAULT_COMPACTION_USER_TEMPLATE
         )
         self._model = model
+        self._fallback_model: Model | None = None
+        self._cost_callback = cost_callback
+
+    def set_fallback_model(self, model: Model | None) -> None:
+        """Set the agent's own model as fallback when no explicit compaction_model was configured.
+
+        Called by the agent after model resolution when compaction_model=None.
+        Has no effect if an explicit model was passed at construction.
+        """
+        if self._model is None:
+            self._fallback_model = model
 
     def summarize(
         self,
@@ -195,7 +209,8 @@ class Summarizer:
         recent = non_system[-4:]
         to_summarize = non_system[:-4]
 
-        if self._model is not None:
+        active_model = self._model if self._model is not None else self._fallback_model
+        if active_model is not None:
             # LLM path: format to_summarize, call model, build result from response
             conversation_text = _format_messages_for_summary(to_summarize)
             try:
@@ -216,12 +231,18 @@ class Summarizer:
                 loop = None
             if loop is not None:
                 with ThreadPoolExecutor(max_workers=1) as pool:
-                    future = pool.submit(self._model.complete, llm_messages)
+                    future = pool.submit(active_model.complete, llm_messages)
                     raw = future.result()
                     response = cast(ProviderResponse, raw)
             else:
-                response = cast(ProviderResponse, self._model.complete(llm_messages))
+                response = cast(ProviderResponse, active_model.complete(llm_messages))
             summary_content = (response.content or "").strip() or "[No summary generated]"
+            if self._cost_callback is not None and hasattr(response, "usage") and response.usage:
+                total_tokens = (
+                    response.usage.total_tokens if hasattr(response.usage, "total_tokens") else 100
+                )
+                cost = total_tokens * 0.00001
+                self._cost_callback(cost)
             summary_msg = {
                 "role": "system",
                 "content": f"[Previous conversation summary]\n{summary_content}",
@@ -257,6 +278,7 @@ class ContextCompactor:
         compaction_prompt: str | None = None,
         compaction_system_prompt: str | None = None,
         compaction_model: Model | None = None,
+        cost_callback: Callable[[float], None] | None = None,
     ) -> None:
         """Initialize the compactor.
 
@@ -264,14 +286,24 @@ class ContextCompactor:
             compaction_prompt: User prompt template for summarization (e.g. with {messages}). None = default.
             compaction_system_prompt: System prompt for summarization. None = default from prompts.py.
             compaction_model: Model for summarization. None = placeholder (no LLM).
+            cost_callback: Optional callback to record summarization LLM cost.
         """
         self._truncator = MiddleOutTruncator()
         self._summarizer = Summarizer(
             system_prompt=compaction_system_prompt,
             user_prompt_template=compaction_prompt,
             model=compaction_model,
+            cost_callback=cost_callback,
         )
         self._counter = get_counter()
+
+    def set_fallback_model(self, model: Model | None) -> None:
+        """Propagate agent's model to the Summarizer when no explicit compaction_model was set.
+
+        Call this once after agent model resolution. Has no effect when an explicit
+        compaction_model was passed at ContextCompactor construction.
+        """
+        self._summarizer.set_fallback_model(model)
 
     def compact(
         self,

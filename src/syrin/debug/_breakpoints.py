@@ -1,4 +1,4 @@
-"""BreakpointManager — registers hook handlers for Pry breakpoints (stub)."""
+"""BreakpointManager — registers hook handlers for Pry breakpoints."""
 
 from __future__ import annotations
 
@@ -16,9 +16,6 @@ class BreakpointManager:
 
     This class knows only about hooks and the lifecycle API.  It does not
     know about the TUI internals.
-
-    .. note::
-        Full implementation in Phase 1 T16 of v0.11.0.
     """
 
     def __init__(self) -> None:

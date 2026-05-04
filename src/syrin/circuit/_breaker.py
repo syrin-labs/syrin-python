@@ -169,6 +169,49 @@ class CircuitBreaker:
 
             return False
 
+    def check_and_record(self, *, success: bool) -> bool:
+        """Atomically check circuit state and record the outcome.
+
+        Combines the is_open check and record_success/record_failure into a
+        single lock acquisition, eliminating the TOCTOU window between them.
+
+        Args:
+            success: True for a successful call, False for a failure.
+
+        Returns:
+            True if the request was allowed (circuit was not OPEN when checked).
+            False if the circuit was OPEN and the request should be blocked.
+        """
+        with self._lock:
+            now = time.monotonic()
+            if self._state == CircuitState.OPEN:
+                elapsed = now - (self._last_failure_time or 0)
+                if elapsed >= self.recovery_timeout:
+                    self._state = CircuitState.HALF_OPEN
+                    self._half_open_attempts = 0
+                else:
+                    return False
+            if success:
+                self._last_success_time = now
+                if self._state == CircuitState.HALF_OPEN:
+                    self._state = CircuitState.CLOSED
+                    self._failures = 0
+                    self._half_open_attempts = 0
+                elif self._state == CircuitState.CLOSED:
+                    self._failures = 0
+            else:
+                self._last_failure_time = now
+                if self._state == CircuitState.HALF_OPEN:
+                    self._state = CircuitState.OPEN
+                    self._half_open_attempts = 0
+                    self._emit_trip()
+                elif self._state == CircuitState.CLOSED:
+                    self._failures += 1
+                    if self._failures >= self.failure_threshold:
+                        self._state = CircuitState.OPEN
+                        self._emit_trip()
+            return True
+
     def _emit_trip(self) -> None:
         if self._on_trip is not None:
             self._on_trip(self.get_state())

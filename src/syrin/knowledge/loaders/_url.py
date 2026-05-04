@@ -39,14 +39,6 @@ class URLLoader:
         """URL being loaded."""
         return self._url
 
-    def load(self) -> list[Document]:
-        """Load the URL synchronously.
-
-        Returns:
-            List containing one Document with the page content.
-        """
-        raise NotImplementedError("URLLoader requires async. Use aload()")
-
     async def aload(self) -> list[Document]:
         """Load the URL asynchronously.
 

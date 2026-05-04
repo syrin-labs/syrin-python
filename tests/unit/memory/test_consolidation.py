@@ -66,7 +66,7 @@ class TestMemoryConsolidate:
         mem.remember("dupe", memory_type=MemoryType.HISTORY)
         removed = mem.consolidate()
         assert removed == 1
-        recalled = mem.recall(count=10)
+        recalled = mem.recall(limit=10)
         assert len(recalled) == 1
 
 

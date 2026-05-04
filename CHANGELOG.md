@@ -9,6 +9,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.12.0] - 2026-05-04
+
+**Theme: The AI Harness — Production-Ready Execution and Orchestration**
+
+### Added
+
+- **`syrin.Resource`** — per-agent resource limits: `Resource(timeout, warn_at, max_steps, max_tools, max_context, on_exceed, thresholds)`. `ResourceThreshold` callbacks fire after every LLM iteration. `DegradePolicy(tool_to_disable)` removes the named tool when `max_tools` is hit in DEGRADE mode. New enums: `OnExceed`, `ResourceDimension`, `DegradeReason`, `RestoreWhen`. New hooks: `RESOURCE_THRESHOLD`, `RESOURCE_EXCEEDED`, `RESOURCE_DEGRADED`, `RESOURCE_RESTORED`. New exceptions: `ResourceExceededError`, `ResourceTimeoutError`, `ResourceStepError`, `ResourceToolError`, `ResourceContextError`.
+- **`syrin.ResourcePool`** — swarm-level rate and concurrency pool alongside `BudgetPool`. `Overflow` StrEnum: `QUEUE`, `REJECT`, `BACKPRESSURE` (AIMD). `pool=` on `Swarm`. New hooks: `POOL_RATE_LOW`, `POOL_REBALANCED`, `POOL_REJECTED`.
+- **`syrin.Sandbox`** — isolated code execution. `ProcessSandbox` default (zero deps, 5–50 ms overhead). `SandboxBackendType`: `PROCESS`, `DOCKER`, `E2B`, `NSJAIL`. `sandbox=` on `CodeActionLoop`. New hooks: `SANDBOX_EXEC_*`. New exceptions: `SandboxError`, `SandboxTimeoutError`, `SandboxMemoryError`.
+  - **`Sandbox.exec_bash()`** — run shell scripts via `bash` (or `sh` fallback) in a fresh isolated subprocess. Enable with `bash=True`. `SANDBOX_WORKSPACE` env var injected so scripts can locate the workspace directory.
+  - **`Sandbox.packages=`** — packages listed at construction are auto-installed before the first `exec_python` call. Thread-safe double-checked locking ensures exactly-once installation.
+  - **`Sandbox.cleanup()`** — explicit workspace teardown. Safe to call multiple times; only removes auto-created workspaces.
+  - **`Sandbox` async context manager** — `async with Sandbox(...) as sb:` calls `cleanup()` on exit.
+  - **`Sandbox._emit_fn`** — lifecycle hooks (`SANDBOX_EXEC_START/END`, `SANDBOX_TIMEOUT`, `SANDBOX_SESSION_CREATED/DESTROYED`) fire automatically when the sandbox is wired into an agent loop.
+- **`syrin.RLMLoop`** — recursive multi-agent decomposition with depth tracking, `allowed_agents` whitelist, and budget propagation. Hard ceiling of 6. New exception: `RLMDepthError`.
+  - **`Hook.RLM_BUDGET_SPLIT`** — emitted after `compute_child_budget()`. Fields: `split`, `parent_budget`, `child_budget`, `agent`.
+  - **Sandbox propagation** — `sandbox=` on the orchestrator is deep-copied into every child's loop via `copy.copy(child_loop)`, so children get an isolated loop reference without mutating the class-level loop.
+- **HITL session persistence** — `SQLiteApprovalSession`, `ApprovalSessionProtocol`, `ApprovalState`, `HITLTimeout`. `HumanInTheLoop` gains `session=` and `on_timeout=`. New hooks: `HITL_REQUESTED`, `HITL_TIMEOUT`.
+- **`CircuitBreaker.check_and_record()`** — atomic check-and-record eliminating TOCTOU race.
+- **`tests/contract/`** — new contract test suite verifying config → behavior for injection strategy, compaction budget, consolidation budget, guardrail mode, and age-based compression.
+
+### Fixed
+
+- `Memory(injection_strategy=...)` now controls injection order; previously all strategies were silently ignored
+- `Summarizer.summarize()` now goes through budget preflight and cost-recording; previously invisible to the budget system
+- `Memory(consolidation_budget=...)` now enforced; raises `BudgetExceededError` when ceiling reached
+- `consolidation_compress_after="Nd"` now implemented; entries older than threshold are compressed
+- `GuardrailMode.SYSTEM_PROMPT` now enforced; previously fell through to PRE_CALL behavior
+- `Summarizer(compaction_model=None)` falls back to the agent's own model
+- `Hook.MEMORY_CONSOLIDATE` now emitted at start and end of `MemoryStore.consolidate()`
+- TOCTOU temp-file races in PDF extraction, Deepgram TTS, and Google Drive loader
+- Silent exception swallowing in `FilesystemCheckpointBackend.list()` and hook emission paths
+- `print()` in library startup code replaced with structured logging
+- Unimplemented config fields now emit `UserWarning` instead of silently doing nothing: `auto_sync`, `map_update_every_turns`, `auto_extract`, `consolidation_resolve_contradictions`
+
+### Changed
+
+- `HumanInTheLoop` gains `session` and `on_timeout` parameters
+- `Swarm` gains `pool: ResourcePool | None` parameter
+- `CodeActionLoop` gains `sandbox: Sandbox | None` parameter
+- `DegradePolicy` fields: `tool_to_disable`, `restore_when`, `include_resource_status` only — `fallback_model` and `compaction_method` removed (were never enforced)
+- `Memory.recall()` accepts `limit=` only — `count=` and `top_k=` aliases removed
+- `CostStats.avg_cost` removed — use `mean`
+- `SandboxBackend` alias removed — use `SandboxBackendType`
+- `@tool(depends_on=[...])` requires `ToolSpec` objects — string names no longer accepted
+
+---
+
 ## [0.11.0] - 2026-04-06
 
 **Theme: Multi-Agent Swarms**

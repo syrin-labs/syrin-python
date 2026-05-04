@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import tempfile
 from pathlib import Path
 
@@ -47,8 +48,9 @@ class DeepgramVoiceProvider(BaseVoiceProvider):
 
         client = DeepgramClient(api_key=api_key)
         opts = SpeakOptions(model=model_id)
-        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
-            tmp = Path(f.name)
+        fd, tmp_name = tempfile.mkstemp(suffix=".mp3")
+        os.close(fd)
+        tmp = Path(tmp_name)
         try:
             client.speak.rest.v("1").save(str(tmp), {"text": text}, opts)
             content_bytes = tmp.read_bytes()

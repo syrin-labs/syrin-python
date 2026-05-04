@@ -10,6 +10,7 @@ from syrin.exceptions._core import (
     BudgetThresholdError,
     CircuitBreakerOpenError,
     CodegenError,
+    ConfigurationError,
     ForecastAbortError,
     HandoffBlockedError,
     HandoffRetryRequested,
@@ -20,6 +21,11 @@ from syrin.exceptions._core import (
     OutputValidationError,
     ProviderError,
     ProviderNotFoundError,
+    ResourceAllocationError,
+    ResourceExceededError,
+    ResourcePoolError,
+    ResourcePoolFullError,
+    ResourceTimeoutError,
     SyrinError,
     TaskError,
     TemplateParseError,
@@ -29,6 +35,7 @@ from syrin.exceptions._core import (
 )
 
 __all__ = [
+    "ConfigurationError",
     "SyrinError",
     "BudgetExceededError",
     "BudgetThresholdError",
@@ -49,4 +56,9 @@ __all__ = [
     "TemplateParseError",
     "OutputValidationError",
     "InputTooLargeError",
+    "ResourceExceededError",
+    "ResourceTimeoutError",
+    "ResourcePoolError",
+    "ResourcePoolFullError",
+    "ResourceAllocationError",
 ]

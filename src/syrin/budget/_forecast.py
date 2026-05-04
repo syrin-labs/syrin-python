@@ -1,4 +1,4 @@
-"""Budget forecasting (Phase 6).
+"""Budget forecasting.
 
 Tracks actual spend across steps and projects whether the run will stay
 within budget. Fires ``Hook.BUDGET_FORECAST`` via a provided callable.

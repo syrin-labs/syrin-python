@@ -571,12 +571,12 @@ def memory_aware_prompt(ctx: PromptContext) -> str:
     user_info = ""
     if ctx.memory:
         # Get user's core facts
-        facts = ctx.memory.recall("core_facts", memory_type="core", limit=5)
+        facts = ctx.memory.recall("core_facts", memory_type="facts", limit=5)
         if facts:
             user_info = f"User profile: {facts}"
         
         # Get conversation history
-        history = ctx.memory.recall("recent_topics", memory_type="episodic", limit=3)
+        history = ctx.memory.recall("recent_topics", memory_type="history", limit=3)
         if history:
             user_info += f"\nRecent topics: {history}"
     

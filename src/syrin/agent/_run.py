@@ -115,8 +115,12 @@ async def run_agent_loop_async(
                         error=str(structured.final_error),
                     ),
                 )
-            except Exception:
-                pass
+            except Exception as _hook_exc:
+                _log.warning(
+                    "Hook emission failed during %s event: %s",
+                    Hook.OUTPUT_VALIDATION_ERROR,
+                    _hook_exc,
+                )
             raise OutputValidationError(
                 f"Structured output validation failed after "
                 f"{getattr(agent, '_validation_retries', 0)} retries. "
@@ -262,8 +266,10 @@ async def _build_structured_with_llm_retry(  # type: ignore[explicit-any]
                     raw=content,
                 ),
             )
-        except Exception:
-            pass
+        except Exception as _hook_exc:
+            _log.warning(
+                "Hook emission failed during %s event: %s", Hook.OUTPUT_VALIDATION_RETRY, _hook_exc
+            )
         retry_prompt = get_retry_prompt(pydantic_model, str(structured.final_error))
         base_messages = agent._build_messages(user_input)
         messages = base_messages + [
@@ -320,6 +326,21 @@ def _auto_store_turn(
                 memory_type=MemoryType.HISTORY,
                 importance=0.6,
             )
+
+        # Emit MEMORY_EXTRACT hook at the auto-extraction entry point for observability.
+        # This fires at the natural extraction entry point so tracing/logging tools can pick it up.
+        store = getattr(pm, "_store", None)
+        if store is not None and hasattr(store, "_emit_extract_hook"):
+            combined = " ".join(
+                filter(
+                    None,
+                    [
+                        text.strip() if text else None,
+                        assistant_content.strip() if assistant_content else None,
+                    ],
+                )
+            )
+            store._emit_extract_hook(combined)
     except Exception as exc:
         _log.warning("auto_store failed: %s", exc, exc_info=True)
 

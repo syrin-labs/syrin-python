@@ -1,14 +1,21 @@
-"""MCP Server — syrin.MCP base class with @tool."""
+"""MCP Server — syrin.MCP base class with @tool, and SyrinMCPServer adapter."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, TextIO
+import logging
+from typing import TYPE_CHECKING, TextIO, Union
+
+_log = logging.getLogger("syrin.mcp")
 
 if TYPE_CHECKING:
-    from syrin.enums import Hook
+    from syrin.agent import Agent
+    from syrin.agent.agent_router import AgentRouter
+    from syrin.enums import Hook, ServeProtocol
 
 from syrin.events import EventContext, Events
 from syrin.tool import ToolSpec
+
+_ServableTarget = Union["Agent", "AgentRouter"]
 
 
 def _collect_mcp_class_tools(cls: type) -> list[ToolSpec]:
@@ -165,16 +172,129 @@ class MCP:
                 raise ImportError(
                     "HTTP serving requires uvicorn. Install with: uv pip install syrin[serve]"
                 ) from e
-            import sys
-
             from fastapi import FastAPI
 
             from syrin.mcp.http import build_mcp_router
             from syrin.mcp.stdio import _syrin_cli_message
 
-            use_color = getattr(sys.stdout, "isatty", lambda: False)()
-            print(_syrin_cli_message(use_color=use_color), flush=True)
+            _log.info(_syrin_cli_message(use_color=False))
 
             app = FastAPI(title=f"MCP: {self.name}", description=self.description or "MCP server")
+            app.include_router(build_mcp_router(self), prefix="/mcp")  # type: ignore[arg-type]
+            uvicorn.run(app, host=host, port=port)
+
+
+class SyrinMCPServer:
+    """MCP server adapter that exposes an Agent or AgentRouter as an MCP server.
+
+    Wraps any Syrin agent or router and creates an MCP-compatible interface:
+    - A primary ``chat`` tool that sends a message to the agent and returns its response.
+    - All tools registered on the agent, exposed individually so MCP hosts can call them.
+
+    Used internally by ``Agent.serve(serve_as=ServeAs.MCP)``. You rarely need to
+    instantiate this directly.
+
+    Example:
+        >>> agent = Agent(model=Model.Anthropic("claude-opus-4-7"), system_prompt="...")
+        >>> agent.serve(serve_as=ServeAs.MCP)                    # STDIO (default for MCP)
+        >>> agent.serve(serve_as=ServeAs.MCP, protocol=ServeProtocol.HTTP, port=8080)
+    """
+
+    def __init__(self, target: _ServableTarget) -> None:
+        """Wrap agent or router for MCP serving.
+
+        Args:
+            target: Agent or AgentRouter to expose.
+        """
+        self._target = target
+        agent_name = getattr(target, "name", None) or type(target).__name__
+        self.name: str = str(agent_name).lower().replace(" ", "_")
+        self.description: str = (
+            getattr(target, "system_prompt", "")
+            or getattr(target, "description", "")
+            or f"Syrin agent: {agent_name}"
+        )
+
+    def tools(self) -> list[ToolSpec]:
+        """Return MCP tool list: agent's own tools + a primary chat tool."""
+        specs: list[ToolSpec] = []
+
+        # Primary chat tool — the main interface to the agent
+        def _chat(message: str) -> str:
+            result = self._target.run(message)
+            return str(getattr(result, "content", result))
+
+        chat_spec = ToolSpec(
+            name="chat",
+            description=(
+                f"Send a message to {self.name} and get a response. "
+                "Use this to interact with the agent."
+            ),
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "message": {"type": "string", "description": "The message to send."}
+                },
+                "required": ["message"],
+            },
+            func=_chat,
+        )
+        specs.append(chat_spec)
+
+        # Expose individual agent tools so MCP hosts can call them directly
+        agent_tools: list[ToolSpec] = list(getattr(self._target, "_tools", None) or [])
+        for t in agent_tools:
+            specs.append(t)
+
+        return specs
+
+    def serve(
+        self,
+        *,
+        protocol: ServeProtocol | None = None,
+        host: str = "0.0.0.0",
+        port: int = 8000,
+        stdin: object = None,
+        stdout: object = None,
+    ) -> None:
+        """Serve this MCP adapter over STDIO (default) or HTTP.
+
+        STDIO is the canonical MCP transport for Claude Code, Claude Desktop,
+        Cursor, and other local MCP hosts. HTTP is useful for remote/hosted
+        integration (Dify, n8n, Langflow).
+
+        Args:
+            protocol: ServeProtocol.STDIO (default) or ServeProtocol.HTTP.
+            host: Bind host for HTTP mode.
+            port: Port for HTTP mode.
+            stdin: Input stream for STDIO. Defaults to sys.stdin.
+            stdout: Output stream for STDIO. Defaults to sys.stdout.
+        """
+        from syrin.enums import ServeProtocol as _SP
+
+        use_stdio = protocol is None or protocol == _SP.STDIO
+
+        if use_stdio:
+            from syrin.mcp.stdio import run_stdio_mcp
+
+            run_stdio_mcp(self, stdin=stdin, stdout=stdout)  # type: ignore[arg-type]
+        else:
+            try:
+                import uvicorn
+            except ImportError as e:
+                raise ImportError(
+                    "HTTP serving requires uvicorn. Install with: uv pip install syrin[serve]"
+                ) from e
+            from fastapi import FastAPI
+
+            from syrin.mcp.http import build_mcp_router
+            from syrin.mcp.stdio import _syrin_cli_message
+
+            _log.info(_syrin_cli_message(use_color=False))
+
+            app = FastAPI(
+                title=f"MCP: {self.name}",
+                description=self.description or "Syrin MCP server",
+            )
             app.include_router(build_mcp_router(self), prefix="/mcp")  # type: ignore[arg-type]
             uvicorn.run(app, host=host, port=port)

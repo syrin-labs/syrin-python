@@ -17,11 +17,11 @@ from syrin.enums import ExceedPolicy
 
 | Value | String | Behavior |
 |-------|--------|----------|
-| `ERROR` | `"error"` | Raise `BudgetExceededError` immediately (default) |
+| `STOP` | `"stop"` | Raise `BudgetExceededError` and halt the run (default) |
 | `WARN` | `"warn"` | Log a warning and continue |
 | `IGNORE` | `"ignore"` | Silently continue |
 
-Use `WARN` in production when you want spend visibility without hard stops. Use `ERROR` for strict cost control. Use `IGNORE` in tests.
+Use `WARN` in production when you want spend visibility without hard stops. Use `STOP` for strict cost control. Use `IGNORE` in tests.
 
 ---
 

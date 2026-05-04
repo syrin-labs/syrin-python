@@ -76,7 +76,7 @@ class TestMemoryWithVectorConfigs:
             qdrant=QdrantConfig(path=temp_dir, collection="test_mem"),
         )
         mem.remember("Test memory", memory_type=MemoryType.FACTS)
-        results = mem.recall(query="Test", count=5)
+        results = mem.recall(query="Test", limit=5)
         assert len(results) >= 1
         assert any("Test memory" in e.content for e in results)
 
@@ -90,7 +90,7 @@ class TestMemoryWithVectorConfigs:
             chroma=ChromaConfig(path=chroma_path, collection="test_chroma"),
         )
         mem.remember("Chroma test", memory_type=MemoryType.HISTORY)
-        results = mem.recall(query="Chroma", count=5)
+        results = mem.recall(query="Chroma", limit=5)
         assert len(results) >= 1
 
     def test_memory_with_qdrant_config_namespace(self, temp_dir: str) -> None:
@@ -106,6 +106,6 @@ class TestMemoryWithVectorConfigs:
             qdrant=QdrantConfig(path=qdrant_path, namespace="tenant_123"),
         )
         mem.remember("Namespaced memory", memory_type=MemoryType.FACTS)
-        results = mem.recall(query="Namespaced", count=10)
+        results = mem.recall(query="Namespaced", limit=10)
         assert len(results) >= 1
         assert any("Namespaced memory" in e.content for e in results)

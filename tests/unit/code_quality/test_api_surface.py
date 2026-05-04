@@ -152,57 +152,41 @@ class TestAgentCheckpointer:
 
 
 class TestRemovedSymbols:
-    """Symbols removed in v0.11.0 are not available in the public syrin namespace."""
+    """Old symbols are not available in the public syrin namespace."""
 
     def test_import_dynamic_pipeline_not_available(self) -> None:
-        """syrin.DynamicPipeline is not in the public namespace (raises AttributeError)."""
+        """syrin.DynamicPipeline is not in the public namespace."""
         import syrin
 
         with pytest.raises(AttributeError):
             _ = syrin.DynamicPipeline  # type: ignore[attr-defined]
 
     def test_import_pipeline_not_available(self) -> None:
-        """syrin.Pipeline is not in the public namespace (raises AttributeError)."""
+        """syrin.Pipeline is not in the public namespace."""
         import syrin
 
         with pytest.raises(AttributeError):
             _ = syrin.Pipeline  # type: ignore[attr-defined]
 
     def test_import_agent_team_not_available(self) -> None:
-        """syrin.AgentTeam is not in the public namespace (raises AttributeError)."""
+        """syrin.AgentTeam is not in the public namespace."""
         import syrin
 
         with pytest.raises(AttributeError):
             _ = syrin.AgentTeam  # type: ignore[attr-defined]
 
-    def test_import_task_raises_import_error(self) -> None:
+    def test_import_task_not_in_public_namespace(self) -> None:
         """'task' is not in the public syrin namespace."""
-        # syrin.task as a subpackage may be pre-imported by other tests; what matters
-        # is that 'task' is not in __all__ and therefore not in the public API.
         import syrin
 
         assert "task" not in syrin.__all__
 
-    def test_import_react_alias_raises_import_error(self) -> None:
-        """REACT acronym alias raises ImportError pointing to ReactLoop."""
+    def test_import_react_alias_raises_attribute_error(self) -> None:
+        """REACT is not a public syrin symbol."""
         import syrin
 
-        with pytest.raises(ImportError) as exc_info:
+        with pytest.raises(AttributeError):
             _ = syrin.REACT  # type: ignore[attr-defined]
-
-        assert "ReactLoop" in str(exc_info.value)
-
-    def test_import_error_message_mentions_v0_11_0(self) -> None:
-        """ImportError messages mention v0.11.0 for tombstoned symbols."""
-        import syrin
-
-        # Only symbols still in _REMOVED_IN_V0_11 raise ImportError with the v0.11.0 message.
-        # DynamicPipeline, Pipeline, and AgentTeam have had their tombstones removed and
-        # now raise AttributeError (not importable at all from syrin namespace).
-        for removed in ("REACT",):
-            with pytest.raises(ImportError) as exc_info:
-                _ = getattr(syrin, removed)
-            assert "v0.11.0" in str(exc_info.value), f"Missing v0.11.0 in {removed} error"
 
     def test_agent_router_still_importable(self) -> None:
         """AgentRouter (DynamicPipeline replacement) remains importable."""

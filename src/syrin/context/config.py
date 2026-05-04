@@ -173,7 +173,7 @@ class Context:
     inject_source_detail: str = "injected"
     """Provenance label for injected messages in snapshot (e.g. 'rag', 'dynamic_rules'). Shown in ContextSnapshot provenance."""
     context_mode: ContextMode = ContextMode.FULL
-    """How to select conversation history: full (default), focused (last N turns), intelligent (relevance-based; requires scorer, not yet implemented)."""
+    """How to select conversation history: full (default) or focused (last N turns)."""
     focused_keep: int = 10
     """When context_mode=focused, number of turns (user+assistant pairs) to keep. Use focused mode for long chats with topic shifts. Must be >= 1."""
     formation_mode: FormationMode = FormationMode.PUSH
@@ -200,7 +200,7 @@ class Context:
     map_path: str | None = None
     """Path for file backend (e.g. '.syrin/context_map.json'). Used when map_backend='file'."""
     map_update_every_turns: int | None = None
-    """If set, update the context map every N completed turns. Not yet implemented; use agent.context.update_map() for manual updates."""
+    """If set, update the context map every N completed turns. Use agent.context.update_map() for manual updates."""
     inject_map_summary: bool = False
     """When True and map has non-empty summary, inject ContextMap.summary as a system block before the current turn. Use with agent.context.update_map({'summary': '...'}) to ground the model across restarts."""
 
@@ -217,6 +217,16 @@ class Context:
         if self.context_mode == ContextMode.FOCUSED and self.focused_keep < 1:
             raise ValueError(
                 f"focused_keep must be >= 1 when context_mode=focused, got {self.focused_keep}"
+            )
+        if self.map_update_every_turns is not None:
+            import warnings
+
+            warnings.warn(
+                "ContextConfig.map_update_every_turns has no effect yet — "
+                "automatic map updates are not wired into the agent run loop. "
+                "Call agent.context.update_map() manually after each turn.",
+                UserWarning,
+                stacklevel=2,
             )
         if self.pull_top_k < 0:
             raise ValueError(f"pull_top_k must be >= 0, got {self.pull_top_k}")

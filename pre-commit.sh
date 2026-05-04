@@ -57,7 +57,8 @@ run_pip_audit() {
         echo -e "${YELLOW}pip-audit not installed — skipping CVE scan (run: uv add --dev pip-audit)${NC}"
         return 0
     fi
-    uv run python -m pip_audit --skip-editable --desc on 2>&1
+    # CVE-2026-3219: pip ZIP/tar ambiguity — no fix released yet, ignored until patched
+    uv run python -m pip_audit --skip-editable --desc on --ignore-vuln CVE-2026-3219 2>&1
     echo -e "${GREEN}✓ pip-audit passed${NC}"
 }
 

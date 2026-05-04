@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import base64
 import tempfile
-from pathlib import Path
 
 
 def file_to_message(data: bytes, mimetype: str, role: str = "user") -> str:
@@ -48,18 +47,14 @@ def pdf_extract_text(data: bytes) -> str:
     except ImportError as e:
         raise ImportError("syrin[pdf] required for PDF extraction. pip install syrin[pdf]") from e
 
-    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+    with tempfile.NamedTemporaryFile(suffix=".pdf") as tmp:
         tmp.write(data)
-        tmp_path = Path(tmp.name)
-
-    try:
+        tmp.flush()
         converter = DocumentConverter()
-        result = converter.convert(str(tmp_path))
+        result = converter.convert(str(tmp.name))
         parts: list[str] = []
         for page in result.document.pages:
             page_text = getattr(page, "text", "") or ""
             if page_text:
                 parts.append(page_text)
         return "\n".join(parts)
-    finally:
-        tmp_path.unlink(missing_ok=True)

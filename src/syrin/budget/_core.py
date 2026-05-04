@@ -323,7 +323,6 @@ class Budget(BaseModel):  # type: ignore[explicit-any]
         description="If False (default), only the closest (highest) crossed threshold runs. "
         "If True, all crossed thresholds run, like switch-case fallthrough.",
     )
-    # --- v0.11.0: Simplified Estimation API ---
     estimation: bool = Field(
         default=False,
         description=(

@@ -176,6 +176,9 @@ def init_agent(
     voice_generation: object,
     knowledge: object | None,
     output_config: object | None,
+    resource: object | None,
+    agents: list[type[object]] | None = None,
+    spawn: object | None = None,  # Spawn | None, untyped to avoid circular import
 ) -> None:
     """Initialize an Agent instance."""
     self._watch_protocols = []
@@ -569,6 +572,15 @@ def init_agent(
         budget, budget_store, self._context_component.token_limits
     )
     self._provider = _resolve_provider(self._model, self._model_config)
+
+    # Thread agent's model into compactor so summarization works without
+    # an explicit compaction_model. No-op when explicit model is already set on compactor.
+    _compactor = getattr(context_manager, "_compactor", None) or getattr(
+        context_manager, "compactor", None
+    )
+    if _compactor is not None and hasattr(_compactor, "set_fallback_model"):
+        _compactor.set_fallback_model(self._model)
+
     object.__setattr__(self, "_agent_name", name)
     object.__setattr__(self, "_agent_instance_id", f"{name}-{uuid.uuid4().hex[:8]}")
     self._description = description
@@ -594,6 +606,13 @@ def init_agent(
                 "Set pricing_override or input_price/output_price on the model.",
                 self._model_config.model_id,
             )
+    # Also check class-level loop= attribute (allows loop = RLMLoop(...) on class body)
+    _loop_explicitly_set: bool = loop is not None
+    if loop is None:
+        _cls_loop = getattr(cls, "loop", None)
+        if _cls_loop is not None and hasattr(_cls_loop, "run") and callable(_cls_loop.run):
+            loop = cast(Loop, _cls_loop)
+            _loop_explicitly_set = True
     if loop is not None:
         if isinstance(loop, type) and hasattr(loop, "run") and callable(loop.run):
             loop_instance = loop()
@@ -604,8 +623,116 @@ def init_agent(
     else:
         loop_instance = ReactLoop(max_iterations=max_tool_iterations)
     self._loop = loop_instance
+
+    # ── Auto-wire RLMLoop when agents= or spawn= is declared ──────────────
+    # Instance-level agents/spawn take precedence over class-level.
+    _inst_agents = agents  # from __init__ param
+    _inst_spawn = spawn  # from __init__ param (Spawn instance or None)
+
+    _cls_agents: list[type[object]] | None = getattr(cls, "_syrin_agents", None)
+    _cls_spawn: object | None = getattr(cls, "_syrin_spawn_config", None)
+
+    # Resolve effective values: instance > class
+    _eff_agents: list[type[object]] | None = (
+        _inst_agents if _inst_agents is not None else _cls_agents
+    )
+    _eff_spawn: object | None = _inst_spawn if _inst_spawn is not None else _cls_spawn
+
+    # Only auto-wire if user declared agents= or spawn=
+    if _eff_agents is not None or _eff_spawn is not None:
+        # Don't overwrite an explicit loop the user already declared via loop= param or class attr
+        if _loop_explicitly_set:
+            _log.debug(
+                "Agent %r: explicit loop= declared alongside agents= or spawn=; "
+                "explicit loop takes precedence.",
+                cls.__name__,
+            )
+        else:
+            # Validate: agents must be a list of Agent subclasses
+            if _eff_agents is not None:
+                from syrin.agent._core import Agent as _AgentClass  # noqa: PLC0415
+
+                for _ag in _eff_agents:
+                    if not (isinstance(_ag, type) and issubclass(_ag, _AgentClass)):
+                        raise TypeError(
+                            f"agents= must contain Agent subclasses; got {_ag!r} "
+                            f"in {cls.__name__}.agents"
+                        )
+
+            from syrin.rlm import RLMLoop as _RLMLoop  # noqa: PLC0415
+            from syrin.rlm._spawn_config import Spawn as _Spawn  # noqa: PLC0415
+
+            # Resolve Spawn config
+            _sc: _Spawn = _eff_spawn if isinstance(_eff_spawn, _Spawn) else _Spawn()
+
+            # Resolve sandbox: class-level sandbox auto-propagated to children
+            _cls_sandbox = getattr(cls, "sandbox", None)
+
+            # Build allowed_agents list
+            _allowed: list[type[object]] | None = list(_eff_agents) if _eff_agents else None
+
+            # Validate: if not dynamic and no allowed agents, raise
+            if not _sc.dynamic and not _allowed:
+                raise ValueError(
+                    f"{cls.__name__}: agents= is empty and Spawn(dynamic=False). "
+                    "Either list at least one Agent in agents=, or set spawn=Spawn(dynamic=True)."
+                )
+
+            _new_loop: Loop = _RLMLoop(  # type: ignore[assignment]
+                allowed_agents=_allowed,
+                max_depth=_sc.max_depth,
+                child_timeout=_sc.child_timeout,
+                dynamic=_sc.dynamic,
+                budget_split=_sc.budget_split,
+                sandbox=_cls_sandbox,
+            )
+            self._loop = _new_loop
+            _log.debug(
+                "Agent %r: auto-wired RLMLoop(max_depth=%d, dynamic=%s, agents=%s)",
+                cls.__name__,
+                _sc.max_depth,
+                _sc.dynamic,
+                [a.__name__ for a in (_allowed or [])],
+            )
+
     self._last_iteration = 0
     self._conversation_id = None
+
+    # — Resource wiring —
+    from syrin._sentinel import NOT_PROVIDED as _NP  # noqa: PLC0415
+
+    _resource_raw = resource if resource is not _NP else None
+    if _resource_raw is None:
+        # Check class-body attribute
+        _resource_raw = getattr(cls, "resource", None)
+    # Only accept a proper Resource instance
+    from syrin.resource import Resource as _Resource  # noqa: PLC0415
+
+    _resource = _resource_raw if isinstance(_resource_raw, _Resource) else None
+    self._resource = _resource
+    self._resource_tracker = None
+    if _resource is not None:
+        from syrin.resource import ResourceTracker as _RT  # noqa: PLC0415
+
+        self._resource_tracker = _RT(_resource)
+        # Wire max_steps → loop.max_iterations
+        if _resource.max_steps is not None and hasattr(self._loop, "max_iterations"):
+            self._loop.max_iterations = _resource.max_steps
+        # Wire max_context → context_component token_limits
+        if _resource.max_context is not None:
+            from syrin.budget import TokenLimits as _TL  # noqa: PLC0415
+
+            existing_tl = self._context_component.token_limits
+            if existing_tl is not None:
+                # Only override if no max_tokens already set
+                if existing_tl.max_tokens is None:
+                    self._context_component.token_limits = _TL(
+                        max_tokens=_resource.max_context,
+                        rate_limits=existing_tl.rate_limits,
+                        exceed_policy=existing_tl.exceed_policy,
+                    )
+            else:
+                self._context_component.token_limits = _TL(max_tokens=_resource.max_context)
     self._child_count = 0
     if max_child_agents is not None:
         self._max_child_agents = max_child_agents

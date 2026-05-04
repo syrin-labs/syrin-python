@@ -165,13 +165,24 @@ loader = Knowledge.YAML("./settings.yaml")
 
 ## Web Loaders
 
+Web loaders (`URL`, `GitHub`, `GoogleDrive`) are async-only — they make network requests and
+return results via `await loader.aload()`. Pass them directly to `Knowledge(sources=[...])` and
+Syrin handles the async loading automatically.
+
 ### URL
 
 Fetch content from websites:
 
 ```python
+# Pass to Knowledge (recommended — handles async internally)
+knowledge = Knowledge(
+    sources=[Knowledge.URL("https://example.com/docs")],
+    embedding=Embedding.OpenAI("text-embedding-3-small"),
+)
+
+# Direct async use
 loader = Knowledge.URL("https://example.com/docs")
-documents = loader.load()
+documents = await loader.aload()
 ```
 
 ### Google Drive
@@ -185,6 +196,7 @@ loader = Knowledge.GoogleDrive(
     pattern=r"\.pdf$",                  # Regex filter
     api_key="your-google-api-key",     # Optional API key
 )
+documents = await loader.aload()
 ```
 
 Requirements:
@@ -203,6 +215,7 @@ loader = Knowledge.GitHub(
     include_code=False,                 # Include code files
     token="ghp_...",                   # Optional GitHub token
 )
+documents = await loader.aload()
 ```
 
 ## Directory Loaders

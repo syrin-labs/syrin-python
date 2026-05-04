@@ -118,13 +118,13 @@ from syrin.enums import MemoryType
 
 agent = Agent(model=Model.mock(), system_prompt="You are helpful.", memory=Memory())
 
-agent.remember("User is a premium subscriber", memory_type=MemoryType.CORE)
-agent.remember("Last session: user asked about pricing", memory_type=MemoryType.EPISODIC)
-agent.remember("The product was launched in 2022", memory_type=MemoryType.SEMANTIC)
-agent.remember("Always respond in JSON for API calls", memory_type=MemoryType.PROCEDURAL)
+agent.remember("User is a premium subscriber", memory_type=MemoryType.FACTS)
+agent.remember("Last session: user asked about pricing", memory_type=MemoryType.HISTORY)
+agent.remember("The product was launched in 2022", memory_type=MemoryType.KNOWLEDGE)
+agent.remember("Always respond in JSON for API calls", memory_type=MemoryType.INSTRUCTIONS)
 
-core = agent.recall("", memory_type=MemoryType.CORE)
-episodic = agent.recall("", memory_type=MemoryType.EPISODIC)
+core = agent.recall("", memory_type=MemoryType.FACTS)
+episodic = agent.recall("", memory_type=MemoryType.HISTORY)
 
 print("Core memories:")
 for m in core:
@@ -207,7 +207,7 @@ Hooks are synchronous by default. They run in the thread that called `agent.run(
 Every finite option in Syrin is a `StrEnum`. You never write magic strings.
 
 Instead of `on_exceeded="stop"`, you write `exceed_policy=ExceedPolicy.STOP`.
-Instead of `memory_type="core"`, you write `memory_type=MemoryType.CORE`.
+Instead of `memory_type="facts"`, you write `memory_type=MemoryType.FACTS`.
 Instead of `backend="sqlite"`, you write `backend=MemoryBackend.SQLITE`.
 
 This means your editor autocompletes everything. It means typos become errors at import time, not at 2 AM when your agent is in production. It means your code is self-documenting — a reader can understand what every option means without looking it up.

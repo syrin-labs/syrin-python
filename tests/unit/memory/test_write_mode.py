@@ -59,7 +59,7 @@ class TestWriteModeAsync:
         )
         ok = mem.remember("Sync write", memory_type=MemoryType.FACTS)
         assert ok is True
-        results = mem.recall(query="Sync", count=5)
+        results = mem.recall(query="Sync", limit=5)
         assert len(results) >= 1
 
     def test_async_eventually_persists(self, temp_db: str) -> None:
@@ -71,7 +71,7 @@ class TestWriteModeAsync:
         )
         mem.remember("Delayed persistence", memory_type=MemoryType.FACTS)
         time.sleep(0.2)  # Allow background thread to complete
-        results = mem.recall(query="Delayed", count=5)
+        results = mem.recall(query="Delayed", limit=5)
         assert len(results) >= 1
 
 
@@ -119,7 +119,7 @@ class TestWriteModeEdgeCases:
             write_mode=WriteMode.SYNC,
         )
         mem.remember("Target", memory_type=MemoryType.FACTS)
-        results = mem.recall(query="Target", count=1)
+        results = mem.recall(query="Target", limit=1)
         assert len(results) >= 1
         mem_id = results[0].id
         mem2 = Memory(

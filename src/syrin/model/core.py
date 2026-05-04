@@ -82,9 +82,6 @@ def detect_provider(model_id: str) -> str:
     return "litellm"
 
 
-_detect_provider = detect_provider  # Internal alias for backward compatibility
-
-
 class _Secret:
     """Wrapper for sensitive values. Prevents accidental display in repr/str."""
 
@@ -905,7 +902,7 @@ class Model:
         if provider:
             self._provider = provider.lower()
         else:
-            self._provider = _detect_provider(model_id) if model_id else "litellm"
+            self._provider = detect_provider(model_id) if model_id else "litellm"
 
         self._name = (
             name or (self._model_id.split("/")[-1] if "/" in self._model_id else self._model_id)

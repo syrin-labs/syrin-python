@@ -241,7 +241,7 @@ def test_simple_response(agent):
 
 def test_with_memory(agent):
     """Test memory integration."""
-    agent.remember("Python is great", memory_type=MemoryType.CORE)
+    agent.remember("Python is great", memory_type=MemoryType.FACTS)
     
     result = agent.run("What programming language do I like?")
     assert "python" in result.content.lower()
@@ -315,7 +315,7 @@ def agent(mock_deps, memory):
 
 # Use in tests
 def test_with_fixtures(agent, memory):
-    agent.remember("Test fact", memory_type=MemoryType.CORE)
+    agent.remember("Test fact", memory_type=MemoryType.FACTS)
     result = agent.run("What fact do you remember?")
     assert "Test fact" in result.content
 ```

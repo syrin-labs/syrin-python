@@ -476,6 +476,8 @@ class Hook(StrEnum):
         HITL_PENDING: Human-in-the-loop approval pending.
         HITL_APPROVED: Human-in-the-loop request approved.
         HITL_REJECTED: Human-in-the-loop request rejected.
+        HITL_REQUESTED: Human-in-the-loop approval session persisted and awaiting response.
+        HITL_TIMEOUT: Human-in-the-loop approval timed out.
         SYSTEM_PROMPT_BEFORE_RESOLVE: Before dynamic system prompt resolution.
         SYSTEM_PROMPT_AFTER_RESOLVE: After system prompt resolved to final string.
         DYNAMIC_PIPELINE_START: AgentRouter execution started.
@@ -487,6 +489,13 @@ class Hook(StrEnum):
         DYNAMIC_PIPELINE_ERROR: AgentRouter encountered an error.
         PRY_BREAKPOINT_HIT: Pry debugger paused at a breakpoint.
         PRY_SESSION_ENDED: Pry debugger session ended.
+        SANDBOX_EXEC_START: Sandbox code execution starting.
+        SANDBOX_EXEC_END: Sandbox code execution completed.
+        SANDBOX_TIMEOUT: Sandbox execution timed out.
+        SANDBOX_OOM: Sandbox execution exceeded memory limit.
+        SANDBOX_SESSION_CREATED: Sandbox session workspace created.
+        SANDBOX_SESSION_DESTROYED: Sandbox session workspace destroyed.
+        RLM_SPAWN_ERROR: Sub-agent spawned by RLMLoop raised an exception.
     """
 
     # — Agent lifecycle —
@@ -652,6 +661,8 @@ class Hook(StrEnum):
     HITL_PENDING = "hitl.pending"
     HITL_APPROVED = "hitl.approved"
     HITL_REJECTED = "hitl.rejected"
+    HITL_REQUESTED = "hitl.requested"
+    HITL_TIMEOUT = "hitl.timeout"
 
     # — System prompt —
     SYSTEM_PROMPT_BEFORE_RESOLVE = "system_prompt.before_resolve"
@@ -740,6 +751,32 @@ class Hook(StrEnum):
     # — Pry debugger —
     PRY_BREAKPOINT_HIT = "pry.breakpoint.hit"
     PRY_SESSION_ENDED = "pry.session.ended"
+
+    # — Sandbox —
+    SANDBOX_EXEC_START = "sandbox.exec.start"
+    SANDBOX_EXEC_END = "sandbox.exec.end"
+    SANDBOX_TIMEOUT = "sandbox.timeout"
+    SANDBOX_OOM = "sandbox.oom"
+    SANDBOX_SESSION_CREATED = "sandbox.session.created"
+    SANDBOX_SESSION_DESTROYED = "sandbox.session.destroyed"
+
+    # — RLMLoop —
+    RLM_SPAWN = "rlm.spawn"
+    RLM_COMPLETE = "rlm.complete"
+    RLM_DEPTH_EXCEEDED = "rlm.depth_exceeded"
+    RLM_BUDGET_SPLIT = "rlm.budget_split"
+    RLM_SPAWN_ERROR = "rlm.spawn_error"
+
+    # — Resource limits —
+    RESOURCE_THRESHOLD = "resource.threshold"
+    RESOURCE_EXCEEDED = "resource.exceeded"
+    RESOURCE_DEGRADED = "resource.degraded"
+    RESOURCE_RESTORED = "resource.restored"
+
+    # — ResourcePool —
+    POOL_RATE_LOW = "pool.rate_low"
+    POOL_REBALANCED = "pool.rebalanced"
+    POOL_REJECTED = "pool.rejected"
 
 
 class AspectRatio(StrEnum):
@@ -840,6 +877,25 @@ class ServeProtocol(StrEnum):
     CLI = "cli"
     HTTP = "http"
     STDIO = "stdio"
+
+
+class ServeAs(StrEnum):
+    """What interface to expose when serving an agent.
+
+    Use when calling ``agent.serve(serve_as=ServeAs.MCP)`` or via
+    ServeConfig.serve_as.
+
+    Attributes:
+        AGENT: Serve as a Syrin agent endpoint (HTTP REST, CLI REPL, or STDIO JSON).
+            Exposes /chat, /stream, /config, and optionally /playground. Default.
+        MCP: Serve as a Model Context Protocol server. The agent is exposed as an
+            MCP tool callable from Claude Code, Claude Desktop, Cursor, Dify, n8n,
+            and any other MCP-compatible host. Transport is controlled by
+            ServeConfig.protocol (STDIO for Claude Code, HTTP for web platforms).
+    """
+
+    AGENT = "agent"
+    MCP = "mcp"
 
 
 class WriteMode(StrEnum):
@@ -1283,10 +1339,11 @@ class AssessmentResult(StrEnum):
 
 
 class ExceedPolicy(StrEnum):
-    """What to do when a budget or token limit is exceeded.
+    """What to do when a **budget or token** limit is exceeded.
 
     Use as the ``exceed_policy`` argument on :class:`syrin.Budget` or
-    :class:`syrin.TokenLimits` to declaratively control limit-exceeded behaviour.
+    :class:`syrin.TokenLimits`. For **resource** limits (steps, tools, context,
+    timeout) use :class:`OnExceed` instead.
 
     Attributes:
         STOP: Raise :class:`syrin.exceptions.BudgetExceededError` and halt the run.
@@ -1299,8 +1356,6 @@ class ExceedPolicy(StrEnum):
     IGNORE = "ignore"
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# v0.11.0 — Remote Config Control Plane StrEnums
 # ──────────────────────────────────────────────────────────────────────────────
 
 
@@ -1389,8 +1444,8 @@ class BroadcastDelivery(StrEnum):
     Attributes:
         AT_MOST_ONCE: Best-effort delivery; no deduplication or retry.
         EXACTLY_ONCE: Deduplicated delivery (requires Redis backend).
-            Reserved — raises :class:`NotImplementedError` in v0.11.0;
-            will be implemented in v0.12.0.
+            Accepted at construction; deduplication enforcement requires
+            a Redis backend and is not yet active.
     """
 
     AT_MOST_ONCE = "at_most_once"
@@ -1427,3 +1482,138 @@ class BudgetForecastStatus(StrEnum):
     ON_TRACK = "on_track"
     AT_RISK = "at_risk"
     LIKELY_EXCEEDED = "likely_exceeded"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class BudgetSplit(StrEnum):
+    """How parent budget is split among child agents in RLMLoop.
+
+    Attributes:
+        EQUAL: Parent budget divided equally across the number of children being spawned.
+        MANUAL: Caller specifies exact budget per child via spawn tool argument.
+        FULL: Child receives the full remaining parent budget (default for single spawns).
+    """
+
+    EQUAL = "equal"
+    MANUAL = "manual"
+    FULL = "full"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class Overflow(StrEnum):
+    """How ResourcePool handles requests when capacity is exhausted.
+
+    Attributes:
+        QUEUE: Buffer requests; wait until a slot opens (asyncio.Queue).
+        REJECT: Raise ResourcePoolFullError immediately.
+        BACKPRESSURE: AIMD congestion control — slow the caller, never fail.
+    """
+
+    QUEUE = "queue"
+    REJECT = "reject"
+    BACKPRESSURE = "backpressure"
+
+
+class OnExceed(StrEnum):
+    """What to do when a **resource** limit is exceeded (steps, tools, context, timeout).
+
+    Use as the ``on_exceed`` argument on :class:`syrin.resource.Resource`. For
+    **budget and token** limits use :class:`ExceedPolicy` instead.
+
+    Attributes:
+        STOP: Raise :class:`~syrin.exceptions.ResourceExceededError` and halt the run.
+        WARN: Log a warning and allow the run to continue.
+        DEGRADE: Gracefully degrade capability instead of stopping. Requires a
+            :class:`~syrin.resource.DegradePolicy` on the ``Resource``.
+    """
+
+    STOP = "stop"
+    WARN = "warn"
+    DEGRADE = "degrade"
+
+
+class RestoreWhen(StrEnum):
+    """When to restore from degraded mode back to full capability.
+
+    Attributes:
+        RATE_UNDER_50: Restore when resource rate drops below 50%.
+        RATE_UNDER_30: Restore when resource rate drops below 30%.
+        ALWAYS: Always remain in degraded mode for this run; restore on next run.
+    """
+
+    RATE_UNDER_50 = "rate_under_50pct"
+    RATE_UNDER_30 = "rate_under_30pct"
+    ALWAYS = "always"
+
+
+class ResourceDimension(StrEnum):
+    """Dimensions tracked by the resource system.
+
+    Attributes:
+        STEPS: Number of agent loop iterations (LLM calls).
+        TOOLS: Total tool calls in a single run.
+        CONTEXT: Context window token count.
+        TIMEOUT: Wall-clock elapsed time in seconds.
+    """
+
+    STEPS = "steps"
+    TOOLS = "tools"
+    CONTEXT = "context"
+    TIMEOUT = "timeout"
+
+
+class DegradeReason(StrEnum):
+    """Reason that triggered a degradation action.
+
+    Attributes:
+        RATE: High resource consumption rate triggered degradation.
+        CONTEXT: Context window is filling up.
+        TOOLS: Tool call limit is approaching or exceeded.
+        TIMEOUT: Wall-clock timeout is approaching.
+        STEPS: Step/iteration limit is approaching.
+    """
+
+    RATE = "rate"
+    CONTEXT = "context"
+    TOOLS = "tools"
+    TIMEOUT = "timeout"
+    STEPS = "steps"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# — HITL Session StrEnums
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class HITLTimeout(StrEnum):
+    """Action to take when HITL approval times out.
+
+    Attributes:
+        APPROVE: Auto-approve the action on timeout.
+        REJECT: Auto-reject the action on timeout (default).
+        RAISE: Raise HITLTimeoutError on timeout.
+    """
+
+    APPROVE = "approve"
+    REJECT = "reject"
+    RAISE = "raise"
+
+
+class ApprovalState(StrEnum):
+    """State of an HITL approval session.
+
+    Attributes:
+        PENDING: Waiting for human approval.
+        APPROVED: Request was approved.
+        REJECTED: Request was rejected.
+        TIMED_OUT: Approval window expired before a decision was made.
+    """
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    TIMED_OUT = "timed_out"

@@ -1,6 +1,6 @@
 """agent_lifecycle.py — Demonstrating AgentRegistry, goal tracking, and stale detection.
 
-This example shows the Phase 9 Agent Lifecycle Management features:
+This example shows the Agent Lifecycle Management features:
 - Registering agents in the in-process AgentRegistry
 - Tracking agent status and costs
 - Setting and updating goals with Hook.GOAL_UPDATED
