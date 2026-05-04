@@ -68,21 +68,21 @@ class Analyst(Agent):
 result = Analyst().run("Summarise Q3 revenue trends")
 
 print(result.content)
-print(f"Cost:      ${result.cost:.6f}")
+print(f"Cost:      \${result.cost:.6f}")
 print(f"Tokens:    {result.tokens.total_tokens}")
-print(f"Remaining: ${result.budget_remaining:.4f}")
+print(f"Remaining: \${result.budget_remaining:.4f}")
 ```
 
 ```
 Q3 revenue grew 14% YoY, driven by enterprise deals (+22%) offsetting
 consumer softness (-3%). Gross margin held at 71%...
 
-Cost:      $0.000312
+Cost:      \$0.000312
 Tokens:    284
-Remaining: $0.0997
+Remaining: \$0.0997
 ```
 
-The agent hard-stops at $0.10. No surprise invoices. No extra code.
+The agent hard-stops at \$0.10. No surprise invoices. No extra code.
 
 ---
 
@@ -104,9 +104,9 @@ class ProductionAgent(Agent):
         reserve=0.10,                         # Hold back for the final reply
         exceed_policy=ExceedPolicy.STOP,      # STOP | WARN | IGNORE | SWITCH
         rate_limits=RateLimit(
-            hour=10.00,                       # $10/hour ceiling
-            day=100.00,                       # $100/day ceiling
-            month=2000.00,                    # $2,000/month ceiling
+            hour=10.00,                       # \$10/hour ceiling
+            day=100.00,                       # \$100/day ceiling
+            month=2000.00,                    # \$2,000/month ceiling
         ),
         thresholds=[
             BudgetThreshold(at=80, action=lambda ctx: alert_ops(ctx)),
@@ -114,7 +114,7 @@ class ProductionAgent(Agent):
     )
 ```
 
-Pre-call estimation, post-call actuals, threshold callbacks, rate-window enforcement — all declarative, zero boilerplate. The $47K runaway-agent incident? A `Budget(max_cost=50)` would have been a $50 error.
+Pre-call estimation, post-call actuals, threshold callbacks, rate-window enforcement — all declarative, zero boilerplate. The \$47K runaway-agent incident? A `Budget(max_cost=50)` would have been a \$50 error.
 
 ---
 
@@ -306,7 +306,7 @@ agent.events.on(Hook.TOOL_CALL_END,       lambda ctx: logger.info(f"Tool {ctx.na
 agent.events.on(Hook.MEMORY_RECALL,       lambda ctx: trace.span("recall", memories=ctx.count))
 agent.events.on(Hook.SANDBOX_EXEC_END,    lambda ctx: print(f"Sandbox {ctx.language} exit={ctx.exit_code} {ctx.duration_ms:.0f}ms"))
 agent.events.on(Hook.RLM_SPAWN,           lambda ctx: print(f"Spawned {ctx.agent} at depth {ctx.depth}"))
-agent.events.on(Hook.RLM_BUDGET_SPLIT,    lambda ctx: print(f"Child budget: ${ctx.child_budget:.4f}"))
+agent.events.on(Hook.RLM_BUDGET_SPLIT,    lambda ctx: print(f"Child budget: \${ctx.child_budget:.4f}"))
 ```
 
 Or enable full tracing with one flag — no code changes:
@@ -424,8 +424,8 @@ for _ in range(10000):
     ip = '.'.join(str(random.randint(1,254)) for _ in range(4))
     code = random.choice([200,200,200,404,500])
     print(f'{ip} GET /api/{random.choice([\"users\",\"orders\"])} {code}')
-" > $SANDBOX_WORKSPACE/access.log
-wc -l $SANDBOX_WORKSPACE/access.log
+" > \$SANDBOX_WORKSPACE/access.log
+wc -l \$SANDBOX_WORKSPACE/access.log
 """)
         return result.stdout.strip()
 
