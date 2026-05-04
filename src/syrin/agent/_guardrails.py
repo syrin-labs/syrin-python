@@ -20,7 +20,7 @@ def run_guardrails(agent: Agent, text: str, stage: GuardrailStage) -> GuardrailR
     """Run guardrails on text. Excludes remotely disabled guardrails and SYSTEM_PROMPT guardrails."""
     from syrin.enums import GuardrailMode
 
-    disabled = getattr(agent, "_guardrails_disabled", set()) or set()
+    disabled: set[str] = getattr(agent, "_guardrails_disabled", set()) or set()
     guardrail_list = getattr(agent._guardrails, "_guardrails", [])
     effective = [
         g

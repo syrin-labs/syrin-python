@@ -1575,8 +1575,8 @@ class Agent(Watchable, Servable, metaclass=_AgentMeta):
     def tools(self) -> list[ToolSpec]:
         """Tool specs attached to this agent (read-only). Excludes disabled tools and MCP servers."""
         raw = list(self._tools) if self._tools else []
-        tools_disabled = getattr(self, "_tools_disabled", set()) or set()
-        mcp_disabled = getattr(self, "_mcp_disabled", set()) or set()
+        tools_disabled: set[str] = getattr(self, "_tools_disabled", set()) or set()
+        mcp_disabled: set[int] = getattr(self, "_mcp_disabled", set()) or set()
         mcp_indices = self._runtime.mcp_tool_indices
         return [
             t

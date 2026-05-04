@@ -67,11 +67,11 @@ class HumanApproval(Guardrail):
             GuardrailDecision with approval status.
         """
         # Get request ID
-        request_id = context.metadata.get("request_id", "default")
+        request_id = str(context.metadata.get("request_id", "default"))
 
         # Check if already approved/rejected
         if request_id in self._approvals:
-            approval = self._approvals[request_id]  # type: ignore[index]
+            approval = self._approvals[request_id]
 
             if approval["status"] == "approved":
                 return GuardrailDecision(
