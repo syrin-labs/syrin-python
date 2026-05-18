@@ -97,11 +97,29 @@ def build_messages(
     # Persistent memory recall
     if memory_backend is not None and persistent_memory is not None:
         top_k = getattr(persistent_memory, "top_k", 10) or 10
+        scope = getattr(persistent_memory, "scope", None)
+
+        def _recall_memories() -> object:
+            try:
+                return memory_backend.search(  # type: ignore[attr-defined]
+                    _user_input_to_search_str(user_input),
+                    None,
+                    top_k,
+                    scope=scope,
+                )
+            except TypeError:
+                # Backward compatibility for custom backends that don't yet accept `scope`.
+                return memory_backend.search(  # type: ignore[attr-defined]
+                    _user_input_to_search_str(user_input),
+                    None,
+                    top_k,
+                )
+
         memories = _in_span(
             tracer,
             "memory.recall",
             {"memory.kind": "persistent"},
-            lambda: memory_backend.search(_user_input_to_search_str(user_input), None, top_k),  # type: ignore[attr-defined]
+            _recall_memories,
             result_attr=("MEMORY_RESULTS_COUNT", len),
         )
         if memories:

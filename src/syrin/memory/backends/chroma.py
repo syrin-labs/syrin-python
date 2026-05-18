@@ -185,11 +185,12 @@ class ChromaBackend:
         query: str,
         memory_type: MemoryType | None = None,
         top_k: int = 10,
+        scope: MemoryScope | None = None,
     ) -> list[MemoryEntry]:
         """Search memories by semantic similarity."""
         query_embedding = self._get_embedding(query)
 
-        where = self._build_where(memory_type=memory_type)
+        where = self._build_where(memory_type=memory_type, scope=scope)
 
         raw_query = self._collection.query(
             query_embeddings=[query_embedding],  # type: ignore[arg-type]

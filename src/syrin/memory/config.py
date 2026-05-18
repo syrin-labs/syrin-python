@@ -145,6 +145,7 @@ class MemoryBackendProtocol(Protocol):
         query: str,
         memory_type: MemoryType | None = None,
         top_k: int = 10,
+        scope: MemoryScope | None = None,
     ) -> list[MemoryEntry]: ...
 
     def list(
@@ -569,8 +570,17 @@ class Memory(BaseModel):  # type: ignore[explicit-any]
         if backend is None:
             return []
         if query:
-            return backend.search(query, memory_type, top_k=effective_limit)
-        return backend.list(memory_type=memory_type, scope=None, limit=effective_limit)
+            try:
+                return backend.search(
+                    query,
+                    memory_type,
+                    top_k=effective_limit,
+                    scope=self.scope,
+                )
+            except TypeError:
+                # Backward compatibility for custom backends that don't yet accept `scope`.
+                return backend.search(query, memory_type, top_k=effective_limit)
+        return backend.list(memory_type=memory_type, scope=self.scope, limit=effective_limit)
 
     def _scan_for_injection(self, content: str) -> bool:
         """6.3: Return True if content looks like a prompt injection attempt."""
@@ -694,7 +704,7 @@ class Memory(BaseModel):  # type: ignore[explicit-any]
         if memory_id:
             backend.delete(memory_id)
             return 1
-        memories = backend.list(memory_type=memory_type, scope=None, limit=1000)
+        memories = backend.list(memory_type=memory_type, scope=self.scope, limit=1000)
         for mem in memories:
             if query and query.lower() not in (mem.content or "").lower():
                 continue

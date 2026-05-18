@@ -5,8 +5,9 @@ from __future__ import annotations
 import pytest
 
 from syrin import Agent
-from syrin.enums import MemoryType
+from syrin.enums import MemoryScope, MemoryType
 from syrin.memory import Memory
+from syrin.memory.config import MemoryEntry
 from syrin.model import Model
 from syrin.types import ProviderResponse, TokenUsage
 
@@ -128,6 +129,32 @@ class TestMemoryEdgeCases:
         agent = Agent(model=model, system_prompt="Test.", memory=Memory())
         deleted = agent.forget(memory_id="nonexistent-uuid-12345")
         assert deleted == 1
+
+    def test_recall_query_enforces_configured_scope(self) -> None:
+        """When memory scope is SESSION, query recall should exclude USER-scope entries."""
+        model = Model("anthropic/claude-3-5-sonnet")
+        mem = Memory(scope=MemoryScope.SESSION)
+        agent = Agent(model=model, system_prompt="Test.", memory=mem)
+
+        # Stored via API should inherit configured SESSION scope.
+        session_id = agent.remember("scope token 123", memory_type=MemoryType.HISTORY)
+
+        # Inject an out-of-scope duplicate directly into backend to simulate leakage risk.
+        assert agent._memory_backend is not None
+        agent._memory_backend.add(
+            MemoryEntry(
+                id="out-of-scope-user-entry",
+                content="scope token 123",
+                type=MemoryType.HISTORY,
+                scope=MemoryScope.USER,
+            )
+        )
+
+        entries = agent.recall("scope token 123", limit=10)
+        ids = {e.id for e in entries}
+
+        assert session_id in ids
+        assert "out-of-scope-user-entry" not in ids
 
 
 class TestRecallContract:

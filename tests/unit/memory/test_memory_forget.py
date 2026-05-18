@@ -9,6 +9,7 @@ Tests that:
 
 from __future__ import annotations
 
+from syrin.enums import MemoryScope
 from syrin.enums import MemoryType
 from syrin.memory.backends.memory import InMemoryBackend
 from syrin.memory.config import MemoryEntry
@@ -16,6 +17,16 @@ from syrin.memory.config import MemoryEntry
 
 def _make_entry(id: str, content: str) -> MemoryEntry:
     return MemoryEntry(id=id, content=content, type=MemoryType.HISTORY, importance=1.0)
+
+
+def _make_entry_with_scope(id: str, content: str, scope: MemoryScope) -> MemoryEntry:
+    return MemoryEntry(
+        id=id,
+        content=content,
+        type=MemoryType.HISTORY,
+        importance=1.0,
+        scope=scope,
+    )
 
 
 class TestInMemoryBackendSearch:
@@ -83,3 +94,27 @@ class TestInMemoryBackendSearch:
         contents = [r.content for r in results]
         assert "alice likes cats" not in contents
         assert "bob hates dogs" in contents
+
+    def test_search_respects_scope_filter(self) -> None:
+        """search(..., scope=...) must not return entries from another scope."""
+        backend = InMemoryBackend()
+        backend.add(
+            _make_entry_with_scope("id1", "shared token ABC", scope=MemoryScope.USER)
+        )
+        backend.add(
+            _make_entry_with_scope("id2", "shared token ABC", scope=MemoryScope.SESSION)
+        )
+
+        results = backend.search("ABC", top_k=10, scope=MemoryScope.SESSION)
+        assert len(results) == 1
+        assert results[0].id == "id2"
+
+    def test_list_respects_scope_filter(self) -> None:
+        """list(..., scope=...) returns only entries from that scope."""
+        backend = InMemoryBackend()
+        backend.add(_make_entry_with_scope("id1", "u1", scope=MemoryScope.USER))
+        backend.add(_make_entry_with_scope("id2", "s1", scope=MemoryScope.SESSION))
+
+        results = backend.list(scope=MemoryScope.USER, limit=10)
+        assert len(results) == 1
+        assert results[0].id == "id1"

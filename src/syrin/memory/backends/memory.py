@@ -25,10 +25,13 @@ class InMemoryBackend:
         query: str,
         memory_type: MemoryType | None = None,
         top_k: int = 10,
+        scope: MemoryScope | None = None,
     ) -> list[MemoryEntry]:
         results = list(self._memories.values())
         if memory_type is not None:
             results = [m for m in results if m.type == memory_type]
+        if scope is not None:
+            results = [m for m in results if m.scope == scope]
         if query:
             q = query.lower()
             results = [m for m in results if q in m.content.lower()]

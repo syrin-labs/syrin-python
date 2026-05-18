@@ -152,6 +152,7 @@ class RedisBackend:
         query: str,
         memory_type: MemoryType | None = None,
         top_k: int = 10,
+        scope: MemoryScope | None = None,
     ) -> list[MemoryEntry]:
         """Search memories. Note: Redis doesn't support full-text search natively.
 
@@ -177,6 +178,8 @@ class RedisBackend:
         for memory_id in ids[: top_k * 2]:  # Get more to filter
             entry = self.get(memory_id)
             if entry and query.lower() in entry.content.lower():
+                if scope is not None and entry.scope != scope:
+                    continue
                 results.append(entry)
             if len(results) >= top_k:
                 break

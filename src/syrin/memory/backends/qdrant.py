@@ -225,10 +225,11 @@ class QdrantBackend:
         query: str,
         memory_type: MemoryType | None = None,
         top_k: int = 10,
+        scope: MemoryScope | None = None,
     ) -> list[MemoryEntry]:
         """Search memories by semantic similarity."""
         query_vector = self._get_embedding(query)
-        filter_condition = self._build_filter(memory_type=memory_type)
+        filter_condition = self._build_filter(memory_type=memory_type, scope=scope)
 
         results = self._client.query_points(
             collection_name=self._collection,

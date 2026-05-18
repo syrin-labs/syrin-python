@@ -214,21 +214,24 @@ class PostgresBackend:
         query: str,
         memory_type: MemoryType | None = None,
         top_k: int = 10,
+        scope: MemoryScope | None = None,
     ) -> list[MemoryEntry]:
         """Search memories by content (simple text search)."""
         cursor = self._conn.cursor()
         params: list[object] = [f"%{query}%"]
+        conditions = ["content LIKE %s"]
         if memory_type:
-            q = sql.SQL(
-                "SELECT * FROM {} WHERE content LIKE %s AND type = %s "
-                "ORDER BY importance DESC LIMIT %s"
-            ).format(self._table_ident())
-            params.extend([memory_type.value, top_k])
-        else:
-            q = sql.SQL(
-                "SELECT * FROM {} WHERE content LIKE %s ORDER BY importance DESC LIMIT %s"
-            ).format(self._table_ident())
-            params.append(top_k)
+            conditions.append("type = %s")
+            params.append(memory_type.value)
+        if scope:
+            conditions.append("scope = %s")
+            params.append(scope.value)
+
+        where = " AND ".join(conditions)
+        q = sql.SQL("SELECT * FROM {} WHERE " + where + " ORDER BY importance DESC LIMIT %s").format(
+            self._table_ident()
+        )
+        params.append(top_k)
         cursor.execute(q, params)
         return [self._row_to_entry(row) for row in cursor.fetchall()]
 

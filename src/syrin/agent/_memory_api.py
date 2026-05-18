@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from syrin.agent import Agent
 
-from syrin.enums import Hook, MemoryType
+from syrin.enums import Hook, MemoryScope, MemoryType
 from syrin.events import EventContext
 from syrin.memory.config import MemoryEntry
 from syrin.observability import SemanticAttributes, SpanKind
@@ -28,6 +28,11 @@ def remember(
     if agent._memory_backend is None:
         raise RuntimeError("No persistent memory configured")
 
+    scope = MemoryScope.USER
+    persistent_memory = getattr(agent, "_persistent_memory", None)
+    if persistent_memory is not None:
+        scope = getattr(persistent_memory, "scope", MemoryScope.USER)
+
     tracer = agent._tracer
     with tracer.span(
         "memory.store",
@@ -42,6 +47,7 @@ def remember(
             content=content,
             type=memory_type,
             importance=importance,
+            scope=scope,
             metadata=metadata,
         )
         agent._memory_backend.add(entry)
@@ -69,6 +75,11 @@ def recall(
     if agent._memory_backend is None:
         raise RuntimeError("No persistent memory configured")
 
+    scope = None
+    persistent_memory = getattr(agent, "_persistent_memory", None)
+    if persistent_memory is not None:
+        scope = getattr(persistent_memory, "scope", None)
+
     tracer = agent._tracer
     with tracer.span(
         "memory.recall",
@@ -80,9 +91,18 @@ def recall(
         },
     ) as mem_span:
         if query:
-            results = agent._memory_backend.search(query, memory_type, limit)
+            try:
+                results = agent._memory_backend.search(
+                    query,
+                    memory_type,
+                    limit,
+                    scope=scope,
+                )
+            except TypeError:
+                # Backward compatibility for custom backends that don't yet accept `scope`.
+                results = agent._memory_backend.search(query, memory_type, limit)
         else:
-            results = agent._memory_backend.list(memory_type, limit=limit)
+            results = agent._memory_backend.list(memory_type, scope=scope, limit=limit)
 
         mem_span.set_attribute(SemanticAttributes.MEMORY_RESULTS_COUNT, len(results))
         agent._run_report.memory.recalls += 1
@@ -109,6 +129,11 @@ def forget(
         raise RuntimeError("No persistent memory configured")
 
     tracer = agent._tracer
+    scope = None
+    persistent_memory = getattr(agent, "_persistent_memory", None)
+    if persistent_memory is not None:
+        scope = getattr(persistent_memory, "scope", None)
+
     with tracer.span(
         "memory.forget",
         kind=SpanKind.MEMORY,
@@ -123,7 +148,7 @@ def forget(
             agent._memory_backend.delete(memory_id)
             deleted = 1
         elif query or memory_type:
-            memories = agent._memory_backend.list(memory_type)
+            memories = agent._memory_backend.list(memory_type, scope=scope)
             for mem in memories:
                 if query is None or (query and query.lower() in mem.content.lower()):
                     agent._memory_backend.delete(mem.id)

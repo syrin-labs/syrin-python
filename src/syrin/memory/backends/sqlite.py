@@ -143,29 +143,31 @@ class SQLiteBackend:
         query: str,
         memory_type: MemoryType | None = None,
         top_k: int = 10,
+        scope: MemoryScope | None = None,
     ) -> list[MemoryEntry]:
         """Search memories by query (simple substring match)."""
-        params: tuple[object, ...]
+        params: list[object] = []
+        conditions: list[str] = []
+
         if query:
-            like_pattern = f"%{query}%"
-            sql = "SELECT * FROM memories WHERE content LIKE ?"
-            params = (like_pattern,)
-            if memory_type:
-                sql += " AND type = ?"
-                params = (like_pattern, memory_type.value)
-            sql += " ORDER BY importance DESC LIMIT ?"
-            params = params + (top_k,)
-        else:
-            sql = "SELECT * FROM memories"
-            params = ()
-            if memory_type:
-                sql += " WHERE type = ?"
-                params = (memory_type.value,)
-            sql += " ORDER BY importance DESC LIMIT ?"
-            params = (params[0], top_k) if params else (top_k,)
+            conditions.append("content LIKE ?")
+            params.append(f"%{query}%")
+        if memory_type:
+            conditions.append("type = ?")
+            params.append(memory_type.value)
+        if scope:
+            conditions.append("scope = ?")
+            params.append(scope.value)
+
+        sql = "SELECT * FROM memories"
+        if conditions:
+            sql += " WHERE " + " AND ".join(conditions)
+
+        sql += " ORDER BY importance DESC LIMIT ?"
+        params.append(top_k)
 
         with self._lock:
-            cursor = self._conn.execute(sql, params)
+            cursor = self._conn.execute(sql, tuple(params))
             rows = cursor.fetchall()
         return [self._row_to_entry(row) for row in rows]
 
