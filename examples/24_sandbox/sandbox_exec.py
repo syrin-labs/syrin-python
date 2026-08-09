@@ -55,6 +55,27 @@ async def main() -> None:
         sandbox=Sandbox(timeout=10.0),
     )
     print(f"\nCodeActionLoop sandbox timeout: {loop.sandbox.timeout}s")  # type: ignore[union-attr]
+    # ------------------------------------------
+    # NEW SECTION: Sandbox + Budget together
+    # ------------------------------------------
+    from syrin import Agent, Budget, Model
+    from syrin.enums import ExceedPolicy
+
+    class DataAgent(Agent):
+        model = Model.mock()   # so it runs without API key
+        budget = Budget(max_cost=0.05, exceed_policy=ExceedPolicy.STOP)
+        sandbox = Sandbox(python=True, timeout=10.0)
+        system_prompt = "You are a data analysis agent. Use the sandbox when needed."
+
+    agent = DataAgent()
+    # run a simple task and print cost info
+    agent_result = await agent.arun("Calculate the first 10 Fibonacci numbers using the sandbox and return the sum.")
+
+    print("\n=== Sandbox + Budget Demo ===")
+    print(f"Result: {agent_result.content}")
+    print(f"Cost: ${agent_result.cost:.6f}")
+    print(f"Tokens: {agent_result.tokens.total_tokens}")
+    print(f"Remaining budget: ${agent_result.budget_remaining:.4f}")
 
 
 if __name__ == "__main__":
