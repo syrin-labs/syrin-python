@@ -164,7 +164,7 @@ PYTHONPATH=. python -m examples.01_minimal.hello_agent
 
 Examples load `.env` via `python-dotenv`. Run: `python examples/01_minimal/hello_agent.py`
 
-**CLI (transport):** `Syrin serve -a examples.hello_agent:agent` (interactive REPL), `Syrin cost`, `Syrin version`, `Syrin run <script.py>`.
+**CLI (transport):** `syrin serve -a examples.hello_agent:agent` (interactive REPL), `syrin cost`, `syrin version`, `syrin run <script.py>`.
 
 ## Remote config
 
