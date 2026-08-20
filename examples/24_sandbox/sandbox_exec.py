@@ -55,6 +55,62 @@ async def main() -> None:
         sandbox=Sandbox(timeout=10.0),
     )
     print(f"\nCodeActionLoop sandbox timeout: {loop.sandbox.timeout}s")  # type: ignore[union-attr]
+    # ------------------------------------------------------------------
+    # Sandbox + Budget Demo
+    # ------------------------------------------------------------------
+    from syrin import Agent, Budget, Model
+    from syrin.enums import ExceedPolicy, MockResponseMode
+    from syrin.sandbox import Sandbox
+    from syrin.loop import CodeActionLoop
+    from syrin.exceptions import BudgetExceededError
+
+    print("\n=== Sandbox + Budget Demo ===")
+
+    sandbox = Sandbox(python=True, timeout=10.0, memory_mb=128)
+
+    # Deterministic mock: returns a Python code block that CodeActionLoop will execute
+    fib_code = """```python
+def fib(n):
+    a, b = 0, 1
+    out = []
+    for _ in range(n):
+        out.append(a)
+        a, b = b, a + b
+    print(sum(out))
+fib(10)
+```"""
+
+    class DataAgent(Agent):
+        model = Model.mock(
+            response_mode=MockResponseMode.CUSTOM,
+            custom_response=fib_code,
+            latency_min=0,
+            latency_max=0,
+        )
+        budget = Budget(max_cost=0.05, exceed_policy=ExceedPolicy.STOP)
+        loop = CodeActionLoop(max_iterations=3, sandbox=sandbox)
+        system_prompt = (
+            "You are a data analysis agent. "
+            "Use the sandbox to calculate and return the sum of the first 10 Fibonacci numbers."
+        )
+
+    agent = DataAgent()
+
+    try:
+        agent_result = await agent.arun(
+            "Calculate the first 10 Fibonacci numbers using the sandbox and return the sum."
+        )
+        print(f"Result: {agent_result.content}")
+        print(f"Cost: ${agent_result.cost:.6f}")
+        print(f"Tokens: {agent_result.tokens.total_tokens}")
+        print(f"Remaining budget: ${agent_result.budget_remaining:.4f}")
+    except BudgetExceededError as e:
+        print(f"Budget exceeded: {e}")
+        print(f"Cost so far: ${getattr(e, 'cost', 0):.6f}")
+    finally:
+        # cleanup() is synchronous
+        if hasattr(sandbox, "cleanup"):
+            sandbox.cleanup()
 
 
 if __name__ == "__main__":
